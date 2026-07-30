@@ -1,0 +1,151 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "ts"
+  importFileExtension    = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Papel {
+  COORDENADORA @map("coordenadora")
+  MENTOR       @map("mentor")
+
+  @@map("papel_usuario")
+}
+
+model Usuario {
+  id               String    @id @default(uuid()) @db.Uuid
+  nome             String    @db.VarChar(150)
+  email            String    @db.VarChar(254)
+  emailNormalizado String    @unique(map: "usuarios_email_normalizado_key") @map("email_normalizado") @db.VarChar(254)
+  senhaHash        String    @map("senha_hash")
+  papel            Papel     @default(MENTOR)
+  ativo            Boolean   @default(true)
+  tokenVersion     Int       @default(0) @map("token_version")
+  ultimoLoginEm    DateTime? @map("ultimo_login_em") @db.Timestamptz(3)
+  criadoEm         DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm     DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  sessoes         Sessao[]
+  cursosMentoria  CursoMentor[] @relation("MentorCursos")
+  vinculosCriados CursoMentor[] @relation("VinculadoPor")
+
+  @@index([papel, ativo], map: "usuarios_papel_ativo_idx")
+  @@map("usuarios")
+}
+
+model Turma {
+  id           String   @id @default(uuid()) @db.Uuid
+  cursoId      String   @map("curso_id") @db.Uuid
+  codigo       String   @db.VarChar(100)
+  dataInicio   DateTime @map("data_inicio") @db.Date
+  dataFim      DateTime @map("data_fim") @db.Date
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  curso   Curso    @relation(fields: [cursoId], references: [id], onDelete: Restrict)
+  modulos Modulo[]
+
+  @@unique([cursoId, codigo], map: "turmas_curso_codigo_key")
+  @@index([cursoId, dataInicio], map: "turmas_curso_data_inicio_idx")
+  @@index([ativo, dataInicio], map: "turmas_ativo_data_inicio_idx")
+  @@map("turmas")
+}
+
+model Modulo {
+  id           String   @id @default(uuid()) @db.Uuid
+  turmaId      String   @map("turma_id") @db.Uuid
+  nome         String   @db.VarChar(150)
+  dataInicio   DateTime @map("data_inicio") @db.Date
+  dataFim      DateTime @map("data_fim") @db.Date
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  turma                Turma               @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  unidadesCurriculares UnidadeCurricular[]
+
+  @@index([turmaId, dataInicio], map: "modulos_turma_data_inicio_idx")
+  @@map("modulos")
+}
+
+model UnidadeCurricular {
+  id           String   @id @default(uuid()) @db.Uuid
+  moduloId     String   @map("modulo_id") @db.Uuid
+  nome         String   @db.VarChar(150)
+  dataInicio   DateTime @map("data_inicio") @db.Date
+  dataFim      DateTime @map("data_fim") @db.Date
+  cargaHoraria Int      @map("carga_horaria")
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  modulo Modulo @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+
+  @@index([moduloId, dataInicio], map: "unidades_curriculares_modulo_data_inicio_idx")
+  @@map("unidades_curriculares")
+}
+
+model Sessao {
+  id               String    @id @default(uuid()) @db.Uuid
+  usuarioId        String    @map("usuario_id") @db.Uuid
+  refreshTokenHash String    @unique(map: "sessoes_refresh_token_hash_key") @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent") @db.VarChar(512)
+  enderecoIp       String?   @map("endereco_ip") @db.VarChar(64)
+  expiraEm         DateTime  @map("expira_em") @db.Timestamptz(3)
+  ultimoUsoEm      DateTime? @map("ultimo_uso_em") @db.Timestamptz(3)
+  revogadaEm       DateTime? @map("revogada_em") @db.Timestamptz(3)
+  criadoEm         DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm     DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, revogadaEm, expiraEm], map: "sessoes_usuario_revogada_expira_idx")
+  @@map("sessoes")
+}
+
+model Curso {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String   @db.VarChar(150)
+  nomeNormalizado String   @unique(map: "cursos_nome_normalizado_key") @map("nome_normalizado") @db.VarChar(150)
+  ativo           Boolean  @default(true)
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  mentores CursoMentor[]
+  turmas   Turma[]
+
+  @@index([ativo, nome], map: "cursos_ativo_nome_idx")
+  @@map("cursos")
+}
+
+model CursoMentor {
+  cursoId        String   @map("curso_id") @db.Uuid
+  mentorId       String   @map("mentor_id") @db.Uuid
+  vinculadoPorId String?  @map("vinculado_por_id") @db.Uuid
+  criadoEm       DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  curso        Curso    @relation(fields: [cursoId], references: [id], onDelete: Cascade)
+  mentor       Usuario  @relation("MentorCursos", fields: [mentorId], references: [id], onDelete: Cascade)
+  vinculadoPor Usuario? @relation("VinculadoPor", fields: [vinculadoPorId], references: [id], onDelete: SetNull)
+
+  @@id([cursoId, mentorId])
+  @@index([mentorId], map: "curso_mentores_mentor_id_idx")
+  @@index([vinculadoPorId], map: "curso_mentores_vinculado_por_id_idx")
+  @@map("curso_mentores")
+}
+
+model TipoAtividade {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String   @db.VarChar(150)
+  nomeNormalizado String   @unique(map: "tipos_atividade_nome_normalizado_key") @map("nome_normalizado") @db.VarChar(150)
+  ativo           Boolean  @default(true)
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@index([ativo, nome], map: "tipos_atividade_ativo_nome_idx")
+  @@map("tipos_atividade")
+}
