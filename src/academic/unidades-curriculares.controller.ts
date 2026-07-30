@@ -15,7 +15,11 @@ import { Papel } from '../generated/prisma/client';
 import { AcademicService } from './academic.service';
 import { CriarUnidadeCurricularDto } from './dto/criar-unidade-curricular.dto';
 import { ListarUnidadesCurricularesQueryDto } from './dto/listar-unidades-curriculares-query.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
+@ApiTags('Unidades curriculares')
+@ApiAutenticado()
 @Controller('unidades-curriculares')
 export class UnidadesCurricularesController {
   constructor(

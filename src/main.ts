@@ -2,10 +2,18 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser = require('cookie-parser');
 
+import { ConfigService, } from '@nestjs/config';
+
+import { AllExceptionsFilter, } from './common/filters/all-exceptions.filter';
+
+import { configurarSwagger, } from './config/swagger';
+
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+
+  const configService = app.get(ConfigService);
 
   app.use(cookieParser());
 
@@ -21,6 +29,20 @@ async function bootstrap(): Promise<void> {
       },
     }),
   );
+
+  app.useGlobalFilters(
+    new AllExceptionsFilter(),
+  );
+
+  const swaggerEnabled =
+    configService.get<boolean>(
+      'SWAGGER_ENABLED',
+      false,
+    );
+
+  if (swaggerEnabled) {
+    configurarSwagger(app);
+  }
 
   const port = process.env.PORT ?? 3000;
 

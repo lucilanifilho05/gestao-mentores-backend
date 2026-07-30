@@ -14,13 +14,15 @@ import {
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { Papeis } from '../common/decorators/papeis.decorator';
 import { UsuarioAtual } from '../common/decorators/usuario-atual.decorator';
-import {
-  Papel,
-} from '../generated/prisma/client';
+import { Papel,} from '../generated/prisma/client';
 import { CoursesService } from './courses.service';
 import { CriarCursoDto } from './dto/criar-curso.dto';
 import { ListarCursosQueryDto } from './dto/listar-cursos-query.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
+@ApiTags('Cursos')
+@ApiAutenticado()
 @Controller('cursos')
 export class CoursesController {
   constructor(

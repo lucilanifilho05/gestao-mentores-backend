@@ -18,7 +18,11 @@ import { AcademicService } from './academic.service';
 import { ClonarTurmaDto } from './dto/clonar-turma.dto';
 import { CriarTurmaDto } from './dto/criar-turma.dto';
 import { ListarTurmasQueryDto } from './dto/listar-turmas-query.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
+@ApiTags('Turmas')
+@ApiAutenticado()
 @Controller('turmas')
 export class TurmasController {
   constructor(

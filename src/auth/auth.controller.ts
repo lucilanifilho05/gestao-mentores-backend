@@ -25,16 +25,24 @@ import type {
   UsuarioAutenticado,
 } from './types/auth.types';
 
+import {
+  ApiBearerAuth,
+  ApiTags,
+} from '@nestjs/swagger';
+
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
+
 type RequestComCookies = Request & {
   cookies?: Record<string, string | undefined>;
 };
 
+@ApiTags('Autenticação')
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * Realiza o login com e-mail e senha.
@@ -114,15 +122,14 @@ export class AuthController {
    *
    * Esta rota é protegida pelo AccessTokenGuard global.
    */
+  @ApiAutenticado()
   @Post('logout-todos')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logoutTodos(
-    @UsuarioAtual() usuario: UsuarioAutenticado,
-    @Res({ passthrough: true }) response: Response,
+    @UsuarioAtual()
+    usuario: UsuarioAutenticado,
   ): Promise<void> {
     await this.authService.logoutTodos(usuario.id);
-
-    this.removerRefreshCookie(response);
   }
 
   /**
@@ -130,10 +137,12 @@ export class AuthController {
    *
    * Esta rota é protegida pelo AccessTokenGuard global.
    */
+  @ApiAutenticado()
   @Get('eu')
   eu(
-    @UsuarioAtual() usuario: UsuarioAutenticado,
-  ): UsuarioAutenticado {
+    @UsuarioAtual()
+    usuario: UsuarioAutenticado,
+  ) {
     return usuario;
   }
 

@@ -19,7 +19,11 @@ import { AlterarStatusUsuarioDto } from './dto/alterar-status-usuario.dto';
 import { CriarUsuarioDto } from './dto/criar-usuario.dto';
 import { ListarUsuariosQueryDto } from './dto/listar-usuarios-query.dto';
 import { UsersService } from './users.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
+@ApiTags('Usuários')
+@ApiAutenticado()
 @Controller('usuarios')
 export class UsersController {
   constructor(

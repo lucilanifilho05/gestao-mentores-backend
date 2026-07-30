@@ -10,6 +10,9 @@ import { AuthModule } from './auth/auth.module';
 import { CoursesModule } from './courses/courses.module';
 import { AcademicModule } from './academic/academic.module';
 import { ActivityTypesModule } from './activity-types/activity-types.module';
+import { TasksModule } from './tasks/tasks.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
+import { ReportsModule } from './reports/reports.module';
 
 
 @Module({
@@ -29,6 +32,9 @@ import { ActivityTypesModule } from './activity-types/activity-types.module';
     CoursesModule,
     AcademicModule,
     ActivityTypesModule,
+    TasksModule,
+    GoogleDriveModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

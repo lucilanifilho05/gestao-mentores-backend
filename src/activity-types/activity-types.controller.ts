@@ -13,7 +13,11 @@ import { Papel } from '../generated/prisma/client';
 import { ActivityTypesService } from './activity-types.service';
 import { CriarTipoAtividadeDto } from './dto/criar-tipo-atividade.dto';
 import { ListarTiposAtividadeQueryDto } from './dto/listar-tipos-atividade-query.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
+@ApiTags('Tipos de atividade')
+@ApiAutenticado()
 @Controller('tipos-atividade')
 export class ActivityTypesController {
   constructor(

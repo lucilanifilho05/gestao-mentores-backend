@@ -16,6 +16,11 @@ import { AcademicService } from './academic.service';
 import { CriarModuloDto } from './dto/criar-modulo.dto';
 import { ListarModulosQueryDto } from './dto/listar-modulos-query.dto';
 
+import { ApiTags } from '@nestjs/swagger';
+import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
+
+@ApiTags('Módulos')
+@ApiAutenticado()
 @Controller('modulos')
 export class ModulosController {
   constructor(
