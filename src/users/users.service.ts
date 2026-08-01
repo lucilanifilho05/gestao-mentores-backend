@@ -92,7 +92,11 @@ export class UsersService {
     const busca = query.busca?.trim();
 
     const where: Prisma.UsuarioWhereInput = {
-      ativo: true,
+      ...(query.ativo !== undefined
+    ? {
+        ativo: query.ativo,
+      }
+    : {}),
 
       ...(query.papel
         ? {

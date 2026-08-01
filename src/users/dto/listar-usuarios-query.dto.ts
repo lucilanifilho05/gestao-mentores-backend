@@ -3,6 +3,7 @@ import {
   Type,
 } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -40,4 +41,30 @@ export class ListarUsuariosQueryDto {
   @IsOptional()
   @IsEnum(Papel)
   papel?: Papel;
+
+  @IsOptional()
+  @Transform(
+    ({ value }: { value: unknown }) => {
+      if (
+        value === true ||
+        value === 'true'
+      ) {
+        return true;
+      }
+
+      if (
+        value === false ||
+        value === 'false'
+      ) {
+        return false;
+      }
+
+      return value;
+    },
+  )
+  @IsBoolean({
+    message:
+      'O filtro ativo deve ser true ou false.',
+  })
+  ativo?: boolean;
 }
