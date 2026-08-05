@@ -3,6 +3,7 @@ import {
   Type,
 } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,15 @@ import {
 } from 'class-validator';
 
 export class ListarTiposAtividadeQueryDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return value;
+  })
+  @IsBoolean({ message: 'ativo deve ser true ou false.' })
+  ativo?: boolean;
+
   @Type(() => Number)
   @IsInt({
     message: 'pagina deve ser um número inteiro.',

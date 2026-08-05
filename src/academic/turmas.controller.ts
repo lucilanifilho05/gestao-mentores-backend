@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import { UsuarioAtual } from '../common/decorators/usuario-atual.decorator';
 import { Papel } from '../generated/prisma/client';
 import { AcademicService } from './academic.service';
 import { ClonarTurmaDto } from './dto/clonar-turma.dto';
+import { AlterarStatusTurmaDto } from './dto/alterar-status-turma.dto';
+import { AtualizarTurmaDto } from './dto/atualizar-turma.dto';
 import { CriarTurmaDto } from './dto/criar-turma.dto';
 import { ListarTurmasQueryDto } from './dto/listar-turmas-query.dto';
 import { ApiTags } from '@nestjs/swagger';
@@ -54,6 +57,38 @@ export class TurmasController {
     return this.academicService.criarTurma(
       dto,
     );
+  }
+
+  @Patch(':turmaId/status')
+  @Papeis(Papel.COORDENADORA)
+  alterarStatus(
+    @Param(
+      'turmaId',
+      new ParseUUIDPipe({ version: '4' }),
+    )
+    turmaId: string,
+
+    @Body()
+    dto: AlterarStatusTurmaDto,
+  ) {
+    return this.academicService
+      .alterarStatusTurma(turmaId, dto);
+  }
+
+  @Patch(':turmaId')
+  @Papeis(Papel.COORDENADORA)
+  atualizar(
+    @Param(
+      'turmaId',
+      new ParseUUIDPipe({ version: '4' }),
+    )
+    turmaId: string,
+
+    @Body()
+    dto: AtualizarTurmaDto,
+  ) {
+    return this.academicService
+      .atualizarTurma(turmaId, dto);
   }
 
   @Post(':turmaId/clonar')

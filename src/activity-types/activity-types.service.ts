@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 
 import {
@@ -13,6 +14,12 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import type { CriarTipoAtividadeDto } from './dto/criar-tipo-atividade.dto';
 import type { ListarTiposAtividadeQueryDto } from './dto/listar-tipos-atividade-query.dto';
+import type { UsuarioAutenticado } from '../auth/types/auth.types';
+import { Papel } from '../generated/prisma/client';
+import type { AtualizarTipoAtividadeDto } from './dto/atualizar-tipo-atividade.dto';
+import type { AlterarStatusTipoAtividadeDto } from './dto/alterar-status-tipo-atividade.dto';
+
+const tipoSelect = { id: true, nome: true, ativo: true, criadoEm: true, atualizadoEm: true } as const;
 
 @Injectable()
 export class ActivityTypesService {
@@ -22,13 +29,18 @@ export class ActivityTypesService {
 
   async listar(
     query: ListarTiposAtividadeQueryDto,
+    usuario: UsuarioAutenticado,
   ) {
     const pagina = query.pagina ?? 1;
     const limite = query.limite ?? 20;
     const busca = query.busca?.trim();
 
     const where: Prisma.TipoAtividadeWhereInput = {
-      ativo: true,
+      ...(usuario.papel === Papel.MENTOR
+        ? { ativo: true }
+        : query.ativo !== undefined
+          ? { ativo: query.ativo }
+          : {}),
 
       ...(busca
         ? {
@@ -54,13 +66,7 @@ export class ActivityTypesService {
               id: 'asc',
             },
           ],
-          select: {
-            id: true,
-            nome: true,
-            ativo: true,
-            criadoEm: true,
-            atualizadoEm: true,
-          },
+          select: tipoSelect,
         }),
 
         this.prisma.tipoAtividade.count({
@@ -94,13 +100,7 @@ export class ActivityTypesService {
           nomeNormalizado,
           ativo: true,
         },
-        select: {
-          id: true,
-          nome: true,
-          ativo: true,
-          criadoEm: true,
-          atualizadoEm: true,
-        },
+        select: tipoSelect,
       });
     } catch (erro: unknown) {
       if (this.ehErroUniqueConstraint(erro)) {
@@ -111,6 +111,33 @@ export class ActivityTypesService {
 
       throw erro;
     }
+  }
+
+  async atualizar(id: string, dto: AtualizarTipoAtividadeDto) {
+    await this.garantirExistencia(id);
+    const nome = normalizarNome(dto.nome);
+    try {
+      return await this.prisma.tipoAtividade.update({
+        where: { id },
+        data: { nome, nomeNormalizado: normalizarChave(nome) },
+        select: tipoSelect,
+      });
+    } catch (erro: unknown) {
+      if (this.ehErroUniqueConstraint(erro)) throw new ConflictException('Já existe um tipo de atividade com esse nome.');
+      throw erro;
+    }
+  }
+
+  async alterarStatus(id: string, dto: AlterarStatusTipoAtividadeDto) {
+    const atual = await this.garantirExistencia(id);
+    if (atual.ativo === dto.ativo) return atual;
+    return this.prisma.tipoAtividade.update({ where: { id }, data: { ativo: dto.ativo }, select: tipoSelect });
+  }
+
+  private async garantirExistencia(id: string) {
+    const tipo = await this.prisma.tipoAtividade.findUnique({ where: { id }, select: tipoSelect });
+    if (!tipo) throw new NotFoundException('Tipo de atividade não encontrado.');
+    return tipo;
   }
 
   private ehErroUniqueConstraint(

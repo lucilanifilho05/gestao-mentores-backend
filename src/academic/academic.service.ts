@@ -24,6 +24,8 @@ import type {
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ClonarTurmaDto } from './dto/clonar-turma.dto';
+import type { AlterarStatusTurmaDto } from './dto/alterar-status-turma.dto';
+import type { AtualizarTurmaDto } from './dto/atualizar-turma.dto';
 import type { CriarModuloDto } from './dto/criar-modulo.dto';
 import type { CriarTurmaDto } from './dto/criar-turma.dto';
 import type { CriarUnidadeCurricularDto } from './dto/criar-unidade-curricular.dto';
@@ -43,7 +45,11 @@ export class AcademicService {
     const limite = query.limite ?? 20;
 
     const where: Prisma.TurmaWhereInput = {
-      ativo: true,
+      ...(usuario.papel === Papel.MENTOR
+        ? { ativo: true }
+        : query.ativo !== undefined
+          ? { ativo: query.ativo }
+          : {}),
 
       ...(query.cursoId
         ? {
@@ -203,6 +209,156 @@ export class AcademicService {
 
       throw erro;
     }
+  }
+
+  async atualizarTurma(
+    turmaId: string,
+    dto: AtualizarTurmaDto,
+  ) {
+    const dataInicio = converterDataAcademica(
+      dto.dataInicio,
+      'dataInicio',
+    );
+    const dataFim = converterDataAcademica(
+      dto.dataFim,
+      'dataFim',
+    );
+
+    validarPeriodo(dataInicio, dataFim, 'turma');
+
+    const turma = await this.prisma.turma.findUnique({
+      where: { id: turmaId },
+      select: {
+        id: true,
+        modulos: {
+          select: {
+            nome: true,
+            dataInicio: true,
+            dataFim: true,
+          },
+        },
+      },
+    });
+
+    if (!turma) {
+      throw new NotFoundException(
+        'Turma não encontrada.',
+      );
+    }
+
+    for (const modulo of turma.modulos) {
+      validarDentroDoPeriodo(
+        modulo.dataInicio,
+        modulo.dataFim,
+        dataInicio,
+        dataFim,
+        `módulo "${modulo.nome}"`,
+        'turma',
+      );
+    }
+
+    try {
+      return await this.prisma.turma.update({
+        where: { id: turmaId },
+        data: {
+          codigo: dto.codigo.trim(),
+          dataInicio,
+          dataFim,
+        },
+        select: {
+          id: true,
+          codigo: true,
+          dataInicio: true,
+          dataFim: true,
+          ativo: true,
+          criadoEm: true,
+          atualizadoEm: true,
+          curso: {
+            select: { id: true, nome: true },
+          },
+        },
+      });
+    } catch (erro: unknown) {
+      if (this.ehErroUniqueConstraint(erro)) {
+        throw new ConflictException(
+          'Já existe uma turma com esse código no curso.',
+        );
+      }
+
+      throw erro;
+    }
+  }
+
+  async alterarStatusTurma(
+    turmaId: string,
+    dto: AlterarStatusTurmaDto,
+  ) {
+    const turma = await this.prisma.turma.findUnique({
+      where: { id: turmaId },
+      select: {
+        id: true,
+        codigo: true,
+        dataInicio: true,
+        dataFim: true,
+        ativo: true,
+        criadoEm: true,
+        atualizadoEm: true,
+        curso: {
+          select: {
+            id: true,
+            nome: true,
+            ativo: true,
+          },
+        },
+      },
+    });
+
+    if (!turma) {
+      throw new NotFoundException(
+        'Turma não encontrada.',
+      );
+    }
+
+    const respostaAtual = {
+      id: turma.id,
+      codigo: turma.codigo,
+      dataInicio: turma.dataInicio,
+      dataFim: turma.dataFim,
+      ativo: turma.ativo,
+      criadoEm: turma.criadoEm,
+      atualizadoEm: turma.atualizadoEm,
+      curso: {
+        id: turma.curso.id,
+        nome: turma.curso.nome,
+      },
+    };
+
+    if (turma.ativo === dto.ativo) {
+      return respostaAtual;
+    }
+
+    if (dto.ativo && !turma.curso.ativo) {
+      throw new BadRequestException(
+        'Não é possível ativar uma turma de um curso inativo.',
+      );
+    }
+
+    return this.prisma.turma.update({
+      where: { id: turmaId },
+      data: { ativo: dto.ativo },
+      select: {
+        id: true,
+        codigo: true,
+        dataInicio: true,
+        dataFim: true,
+        ativo: true,
+        criadoEm: true,
+        atualizadoEm: true,
+        curso: {
+          select: { id: true, nome: true },
+        },
+      },
+    });
   }
 
   async clonarTurma(

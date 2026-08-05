@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsOptional,
   IsUUID,
@@ -11,6 +12,28 @@ export class ListarTurmasQueryDto {
   @IsOptional()
   @IsUUID('4')
   cursoId?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const texto = value.trim().toLowerCase();
+
+    if (texto === 'true') return true;
+    if (texto === 'false') return false;
+
+    return value;
+  })
+  @IsBoolean({
+    message: 'ativo deve ser true ou false.',
+  })
+  ativo?: boolean;
 
   @Type(() => Number)
   @IsInt()
