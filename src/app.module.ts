@@ -11,9 +11,8 @@ import { CoursesModule } from './courses/courses.module';
 import { AcademicModule } from './academic/academic.module';
 import { ActivityTypesModule } from './activity-types/activity-types.module';
 import { TasksModule } from './tasks/tasks.module';
-import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { ReportsModule } from './reports/reports.module';
-
+import { ProjectsModule } from './projects/projects.module';
 
 @Module({
   imports: [
@@ -33,7 +32,7 @@ import { ReportsModule } from './reports/reports.module';
     AcademicModule,
     ActivityTypesModule,
     TasksModule,
-    GoogleDriveModule,
+    ProjectsModule,
     ReportsModule,
   ],
   controllers: [AppController],

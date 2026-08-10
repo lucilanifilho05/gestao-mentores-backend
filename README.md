@@ -1,6 +1,6 @@
 # Gestão de Mentores — Backend
 
-API REST para gerenciamento de mentores, cursos, turmas, módulos, unidades curriculares, tarefas, anexos e relatórios.
+API REST para gerenciamento de mentores, cursos, turmas, módulos, unidades curriculares, tarefas, links e relatórios.
 
 O projeto foi desenvolvido com NestJS, Prisma ORM e PostgreSQL.
 
@@ -19,7 +19,6 @@ O projeto foi desenvolvido com NestJS, Prisma ORM e PostgreSQL.
 * JWT
 * Argon2
 * Swagger
-* Google Drive API
 * ExcelJS
 * PDFKit
 * Jest
@@ -72,13 +71,22 @@ Papéis disponíveis:
 
 ### Tarefas
 
-* Criação de tarefas
+* Criação de tarefas vinculadas obrigatoriamente a projetos
 * Listagem com filtros e paginação
 * Consulta detalhada
 * Reagendamento
 * Histórico de reagendamentos
 * Conclusão de tarefas
 * Controle de acesso por responsável
+* Validação do prazo da tarefa dentro do prazo final do projeto
+
+### Projetos
+
+* Criação e listagem de projetos
+* Agrupamento neutro de tarefas, sem curso, escopo, responsável ou links próprios
+* Agrupamento de tarefas sem níveis de subtarefas
+* Conclusão condicionada à finalização das tarefas pendentes
+* Cancelamento com preservação do histórico
 
 Escopos disponíveis:
 
@@ -91,12 +99,11 @@ Status disponíveis:
 * Pendente
 * Concluída
 
-### Anexos
+### Links de arquivos
 
-* Envio de anexos para o Google Drive
-* Registro dos metadados no PostgreSQL
-* Geração de links de visualização
-* Controle de acesso aos arquivos
+* Registro de links HTTP/HTTPS diretamente nas tarefas
+* Compatibilidade com qualquer serviço de armazenamento em nuvem
+* Redirecionamento direto para arquivos previamente compartilhados
 
 ### Relatórios
 
@@ -161,17 +168,7 @@ JWT_REFRESH_EXPIRES_IN="7d"
 
 SWAGGER_ENABLED=true
 
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
-GOOGLE_REDIRECT_URI="http://localhost:3000/drive/callback"
-GOOGLE_OAUTH_STATE_SECRET="substitua-por-uma-chave-segura"
-DRIVE_TOKEN_ENCRYPTION_KEY="CHAVE_BASE64_DE_32_BYTES"
-GOOGLE_DRIVE_FOLDER_ID=""
 ```
-
-As credenciais do Google Drive somente são necessárias para utilizar o envio de anexos.
-
-Para uma apresentação sem anexos, as rotas relacionadas ao Google Drive podem ser ignoradas.
 
 ---
 
@@ -328,16 +325,16 @@ GET  /tarefas/:tarefaId
 POST /tarefas/:tarefaId/reagendar
 POST /tarefas/:tarefaId/concluir
 
-POST /tarefas/:tarefaId/anexar
-GET  /tarefas/:tarefaId/anexos/:anexoId/link
 ```
 
-### Google Drive
+### Projetos
 
 ```text
-GET /drive/autorizar
-GET /drive/callback
-GET /drive/status
+GET  /projetos
+POST /projetos
+GET  /projetos/:projetoId
+POST /projetos/:projetoId/concluir
+POST /projetos/:projetoId/cancelar
 ```
 
 ### Relatórios
@@ -378,7 +375,7 @@ O mentor pode:
 * criar tarefas para si;
 * reagendar suas próprias tarefas;
 * concluir suas próprias tarefas;
-* consultar anexos permitidos;
+* consultar links das tarefas permitidas;
 * gerar relatórios limitados às próprias tarefas.
 
 ---
@@ -461,7 +458,6 @@ Alguns itens foram planejados para etapas posteriores:
 * backup automatizado;
 * containerização completa da API;
 * políticas avançadas de segurança;
-* limpeza automática de anexos órfãos;
 * documentação de implantação em produção.
 
 Antes de disponibilizar a aplicação publicamente, será necessário revisar configurações de segurança, HTTPS, CORS, cookies, segredos e limites de requisição.
@@ -479,9 +475,9 @@ src/
 ├── config/
 ├── courses/
 ├── generated/
-├── google-drive/
 ├── health/
 ├── prisma/
+├── projects/
 ├── reports/
 ├── tasks/
 ├── users/

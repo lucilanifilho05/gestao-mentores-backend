@@ -15,7 +15,7 @@ export function configurarSwagger(
         'Gestão de Mentores API',
       )
       .setDescription(
-        'API de gestão acadêmica, mentores, tarefas, anexos e relatórios.',
+        'API de gestão acadêmica, mentores, tarefas, links e relatórios.',
       )
       .setVersion('1.0')
       .addBearerAuth(

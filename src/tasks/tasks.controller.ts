@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,11 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { UsuarioAtual } from '../common/decorators/usuario-atual.decorator';
@@ -33,80 +28,6 @@ export class TasksController {
     private readonly tasksService:
       TasksService,
   ) { }
-
-  @Post(':tarefaId/anexar')
-  @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(
-    FileInterceptor('arquivo', {
-      storage: memoryStorage(),
-
-      limits: {
-        files: 1,
-        fileSize:
-          20 * 1024 * 1024,
-      },
-    }),
-  )
-  anexar(
-    @Param(
-      'tarefaId',
-      new ParseUUIDPipe({
-        version: '4',
-      }),
-    )
-    tarefaId: string,
-
-    @UploadedFile()
-    arquivo:
-      | Express.Multer.File
-      | undefined,
-
-    @UsuarioAtual()
-    usuario: UsuarioAutenticado,
-  ) {
-    if (!arquivo) {
-      throw new BadRequestException(
-        'O campo arquivo é obrigatório.',
-      );
-    }
-
-    return this.tasksService.anexar(
-      tarefaId,
-      arquivo,
-      usuario,
-    );
-  }
-
-  @Get(
-    ':tarefaId/anexos/:anexoId/link',
-  )
-  gerarLinkAnexo(
-    @Param(
-      'tarefaId',
-      new ParseUUIDPipe({
-        version: '4',
-      }),
-    )
-    tarefaId: string,
-
-    @Param(
-      'anexoId',
-      new ParseUUIDPipe({
-        version: '4',
-      }),
-    )
-    anexoId: string,
-
-    @UsuarioAtual()
-    usuario: UsuarioAutenticado,
-  ) {
-    return this.tasksService
-      .gerarLinkAnexo(
-        tarefaId,
-        anexoId,
-        usuario,
-      );
-  }
 
   @Get()
   listar(

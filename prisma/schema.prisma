@@ -32,7 +32,7 @@ model Usuario {
   tarefasCriadas      Tarefa[]        @relation("TarefaCriador")
   tarefasResponsaveis Tarefa[]        @relation("TarefaResponsavel")
   reagendamentos      Reagendamento[] @relation("ReagendamentoUsuario")
-  anexosEnviados      AnexoTarefa[]   @relation("AnexoEnviadoPor")
+  projetosCriados     Projeto[]       @relation("ProjetoCriador")
 
   sessoes         Sessao[]
   cursosMentoria  CursoMentor[] @relation("MentorCursos")
@@ -173,9 +173,39 @@ enum StatusTarefa {
   @@map("status_tarefa")
 }
 
+enum StatusProjeto {
+  PLANEJAMENTO @map("planejamento")
+  EM_ANDAMENTO @map("em_andamento")
+  CONCLUIDO    @map("concluido")
+  CANCELADO    @map("cancelado")
+
+  @@map("status_projeto")
+}
+
+model Projeto {
+  id           String        @id @default(uuid()) @db.Uuid
+  nome         String        @db.VarChar(200)
+  descricao    String?       @db.Text
+  criadoPorId  String        @map("criado_por_id") @db.Uuid
+  dataInicio   DateTime?     @map("data_inicio") @db.Timestamptz(3)
+  prazoFinal   DateTime      @map("prazo_final") @db.Timestamptz(3)
+  status       StatusProjeto @default(PLANEJAMENTO)
+  criadoEm     DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  concluidoEm  DateTime?     @map("concluido_em") @db.Timestamptz(3)
+
+  criadoPor Usuario  @relation("ProjetoCriador", fields: [criadoPorId], references: [id], onDelete: Restrict)
+  tarefas   Tarefa[]
+
+  @@index([status, prazoFinal], map: "projetos_status_prazo_idx")
+  @@index([criadoPorId], map: "projetos_criado_por_idx")
+  @@map("projetos")
+}
+
 model Tarefa {
   id              String       @id @default(uuid()) @db.Uuid
   tipoAtividadeId String       @map("tipo_atividade_id") @db.Uuid
+  projetoId       String       @map("projeto_id") @db.Uuid
   titulo          String       @db.VarChar(200)
   descricao       String?      @db.Text
   criadoPorId     String       @map("criado_por_id") @db.Uuid
@@ -189,8 +219,10 @@ model Tarefa {
   criadoEm        DateTime     @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm    DateTime     @updatedAt @map("atualizado_em") @db.Timestamptz(3)
   concluidoEm     DateTime?    @map("concluido_em") @db.Timestamptz(3)
+  links           String[]     @default([])
 
   tipoAtividade TipoAtividade @relation(fields: [tipoAtividadeId], references: [id], onDelete: Restrict)
+  projeto       Projeto       @relation(fields: [projetoId], references: [id], onDelete: Restrict)
 
   criadoPor Usuario @relation("TarefaCriador", fields: [criadoPorId], references: [id], onDelete: Restrict)
 
@@ -201,12 +233,12 @@ model Tarefa {
   turma Turma? @relation(fields: [turmaId], references: [id], onDelete: Restrict)
 
   reagendamentos Reagendamento[]
-  anexos         AnexoTarefa[]
 
   @@index([responsavelId, status, prazoAtual], map: "tarefas_responsavel_status_prazo_idx")
   @@index([cursoId, prazoAtual], map: "tarefas_curso_prazo_idx")
   @@index([turmaId, prazoAtual], map: "tarefas_turma_prazo_idx")
   @@index([tipoAtividadeId], map: "tarefas_tipo_atividade_idx")
+  @@index([projetoId, status, prazoAtual], map: "tarefas_projeto_status_prazo_idx")
   @@index([criadoPorId], map: "tarefas_criado_por_idx")
   @@map("tarefas")
 }
@@ -227,31 +259,4 @@ model Reagendamento {
   @@index([tarefaId, criadoEm], map: "reagendamentos_tarefa_criado_em_idx")
   @@index([reagendadoPorId], map: "reagendamentos_usuario_idx")
   @@map("reagendamentos")
-}
-
-model AnexoTarefa {
-  id           String   @id @default(uuid()) @db.Uuid
-  tarefaId     String   @map("tarefa_id") @db.Uuid
-  nomeArquivo  String   @map("nome_arquivo") @db.VarChar(255)
-  mimeType     String   @map("mime_type") @db.VarChar(150)
-  tamanhoBytes Int      @map("tamanho_bytes")
-  driveFileId  String   @unique(map: "anexos_tarefa_drive_file_id_key") @map("drive_file_id") @db.VarChar(255)
-  enviadoPorId String   @map("enviado_por_id") @db.Uuid
-  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
-
-  tarefa     Tarefa  @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
-  enviadoPor Usuario @relation("AnexoEnviadoPor", fields: [enviadoPorId], references: [id], onDelete: Restrict)
-
-  @@index([tarefaId, criadoEm], map: "anexos_tarefa_tarefa_criado_em_idx")
-  @@index([enviadoPorId], map: "anexos_tarefa_enviado_por_idx")
-  @@map("anexos_tarefa")
-}
-
-model GoogleDriveToken {
-  id                  String   @id @default("principal") @db.VarChar(32)
-  refreshTokenCifrado String   @map("refresh_token_cifrado") @db.Text
-  criadoEm            DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm        DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
-
-  @@map("google_drive_tokens")
 }

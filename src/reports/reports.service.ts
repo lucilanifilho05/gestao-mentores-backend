@@ -1,23 +1,15 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import ExcelJS = require('exceljs');
 import PDFDocument = require('pdfkit');
 
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
-import {
-  Papel,
-} from '../generated/prisma/client';
-import type {
-  Prisma,
-} from '../generated/prisma/client';
+import { Papel } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RelatorioTarefasQueryDto } from './dto/relatorio-tarefas-query.dto';
 
 const MAXIMO_REGISTROS = 10_000;
-const DATA_SIMPLES_REGEX =
-  /^\d{4}-\d{2}-\d{2}$/;
+const DATA_SIMPLES_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const tarefaRelatorioSelect = {
   id: true,
@@ -29,6 +21,8 @@ const tarefaRelatorioSelect = {
   status: true,
   criadoEm: true,
   concluidoEm: true,
+  links: true,
+  projeto: { select: { id: true, nome: true } },
 
   tipoAtividade: {
     select: {
@@ -70,60 +64,40 @@ const tarefaRelatorioSelect = {
   _count: {
     select: {
       reagendamentos: true,
-      anexos: true,
     },
   },
 } satisfies Prisma.TarefaSelect;
 
-type TarefaRelatorio =
-  Prisma.TarefaGetPayload<{
-    select: typeof tarefaRelatorioSelect;
-  }>;
+type TarefaRelatorio = Prisma.TarefaGetPayload<{
+  select: typeof tarefaRelatorioSelect;
+}>;
 
 @Injectable()
 export class ReportsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async gerarJson(
     query: RelatorioTarefasQueryDto,
     usuario: UsuarioAutenticado,
   ) {
-    const tarefas =
-      await this.buscarTarefas(
-        query,
-        usuario,
-      );
+    const tarefas = await this.buscarTarefas(query, usuario);
 
-    return tarefas.map((tarefa) =>
-      this.formatarTarefa(tarefa),
-    );
+    return tarefas.map((tarefa) => this.formatarTarefa(tarefa));
   }
 
   async gerarExcel(
     query: RelatorioTarefasQueryDto,
     usuario: UsuarioAutenticado,
   ): Promise<Buffer> {
-    const tarefas =
-      await this.buscarTarefas(
-        query,
-        usuario,
-      );
+    const tarefas = await this.buscarTarefas(query, usuario);
 
-    const workbook =
-      new ExcelJS.Workbook();
+    const workbook = new ExcelJS.Workbook();
 
-    workbook.creator =
-      'Gestão de Mentores';
+    workbook.creator = 'Gestão de Mentores';
 
-    workbook.created =
-      new Date();
+    workbook.created = new Date();
 
-    const worksheet =
-      workbook.addWorksheet(
-        'Relatório de Tarefas',
-      );
+    const worksheet = workbook.addWorksheet('Relatório de Tarefas');
 
     worksheet.columns = [
       {
@@ -172,8 +146,8 @@ export class ReportsService {
         width: 18,
       },
       {
-        header: 'Anexos',
-        key: 'anexos',
+        header: 'Links',
+        key: 'links',
         width: 12,
       },
     ];
@@ -190,8 +164,7 @@ export class ReportsService {
       to: 'J1',
     };
 
-    const cabecalho =
-      worksheet.getRow(1);
+    const cabecalho = worksheet.getRow(1);
 
     cabecalho.font = {
       bold: true,
@@ -206,39 +179,23 @@ export class ReportsService {
       worksheet.addRow({
         titulo: tarefa.titulo,
 
-        tipo:
-          tarefa.tipoAtividade.nome,
+        tipo: tarefa.tipoAtividade.nome,
 
-        responsavel:
-          tarefa.responsavel.nome,
+        responsavel: tarefa.responsavel.nome,
 
-        escopo:
-          this.serializarEnum(
-            tarefa.escopo,
-          ),
+        escopo: this.serializarEnum(tarefa.escopo),
 
-        curso:
-          tarefa.curso?.nome ?? '',
+        curso: tarefa.curso?.nome ?? '',
 
-        turma:
-          tarefa.turma?.codigo ?? '',
+        turma: tarefa.turma?.codigo ?? '',
 
-        prazo:
-          this.formatarData(
-            tarefa.prazoAtual,
-          ),
+        prazo: this.formatarData(tarefa.prazoAtual),
 
-        status:
-          this.serializarEnum(
-            tarefa.status,
-          ),
+        status: this.serializarEnum(tarefa.status),
 
-        reagendamentos:
-          tarefa._count
-            .reagendamentos,
+        reagendamentos: tarefa._count.reagendamentos,
 
-        anexos:
-          tarefa._count.anexos,
+        links: tarefa.links.length,
       });
     }
 
@@ -249,8 +206,7 @@ export class ReportsService {
       };
     });
 
-    const resultado =
-      await workbook.xlsx.writeBuffer();
+    const resultado = await workbook.xlsx.writeBuffer();
 
     return Buffer.from(resultado);
   }
@@ -259,306 +215,177 @@ export class ReportsService {
     query: RelatorioTarefasQueryDto,
     usuario: UsuarioAutenticado,
   ): Promise<Buffer> {
-    const tarefas =
-      await this.buscarTarefas(
-        query,
-        usuario,
-      );
+    const tarefas = await this.buscarTarefas(query, usuario);
 
-    return new Promise<Buffer>(
-      (resolve, reject) => {
-        const documento =
-          new PDFDocument({
-            size: 'A4',
-            layout: 'landscape',
-            margin: 36,
-            info: {
-              Title:
-                'Relatório de Tarefas',
-              Author:
-                'Gestão de Mentores',
-            },
+    return new Promise<Buffer>((resolve, reject) => {
+      const documento = new PDFDocument({
+        size: 'A4',
+        layout: 'landscape',
+        margin: 36,
+        info: {
+          Title: 'Relatório de Tarefas',
+          Author: 'Gestão de Mentores',
+        },
+      });
+
+      const partes: Buffer[] = [];
+
+      documento.on('data', (parte: Buffer) => {
+        partes.push(Buffer.from(parte));
+      });
+
+      documento.on('end', () => {
+        resolve(Buffer.concat(partes));
+      });
+
+      documento.on('error', reject);
+
+      documento
+        .font('Helvetica-Bold')
+        .fontSize(17)
+        .text('Relatório de Tarefas');
+
+      documento
+        .moveDown(0.3)
+        .font('Helvetica')
+        .fontSize(9)
+        .text(`Gerado em ${this.formatarData(new Date())}`)
+        .text(`Quantidade de tarefas: ${tarefas.length}`);
+
+      documento.moveDown(1);
+
+      const larguras = [180, 105, 125, 85, 100, 75, 55];
+
+      const titulos = [
+        'Título',
+        'Tipo',
+        'Responsável',
+        'Escopo',
+        'Prazo',
+        'Status',
+        'Reag.',
+      ];
+
+      let posicaoY = documento.y;
+
+      const desenharCabecalho = () => {
+        let posicaoX = documento.page.margins.left;
+
+        documento.font('Helvetica-Bold').fontSize(8);
+
+        for (let indice = 0; indice < titulos.length; indice += 1) {
+          const largura = larguras[indice];
+
+          documento.rect(posicaoX, posicaoY, largura, 24).stroke();
+
+          documento.text(titulos[indice], posicaoX + 4, posicaoY + 7, {
+            width: largura - 8,
+            align: 'left',
           });
 
-        const partes: Buffer[] = [];
+          posicaoX += largura;
+        }
 
-        documento.on(
-          'data',
-          (parte: Buffer) => {
-            partes.push(
-              Buffer.from(parte),
-            );
-          },
-        );
+        posicaoY += 24;
+      };
 
-        documento.on(
-          'end',
-          () => {
-            resolve(
-              Buffer.concat(partes),
-            );
-          },
-        );
+      const adicionarPagina = () => {
+        documento.addPage({
+          size: 'A4',
+          layout: 'landscape',
+          margin: 36,
+        });
 
-        documento.on(
-          'error',
-          reject,
-        );
-
-        documento
-          .font('Helvetica-Bold')
-          .fontSize(17)
-          .text(
-            'Relatório de Tarefas',
-          );
-
-        documento
-          .moveDown(0.3)
-          .font('Helvetica')
-          .fontSize(9)
-          .text(
-            `Gerado em ${this.formatarData(
-              new Date(),
-            )}`,
-          )
-          .text(
-            `Quantidade de tarefas: ${tarefas.length}`,
-          );
-
-        documento.moveDown(1);
-
-        const larguras = [
-          180,
-          105,
-          125,
-          85,
-          100,
-          75,
-          55,
-        ];
-
-        const titulos = [
-          'Título',
-          'Tipo',
-          'Responsável',
-          'Escopo',
-          'Prazo',
-          'Status',
-          'Reag.',
-        ];
-
-        let posicaoY =
-          documento.y;
-
-        const desenharCabecalho = () => {
-          let posicaoX =
-            documento.page.margins.left;
-
-          documento
-            .font('Helvetica-Bold')
-            .fontSize(8);
-
-          for (
-            let indice = 0;
-            indice < titulos.length;
-            indice += 1
-          ) {
-            const largura =
-              larguras[indice];
-
-            documento
-              .rect(
-                posicaoX,
-                posicaoY,
-                largura,
-                24,
-              )
-              .stroke();
-
-            documento.text(
-              titulos[indice],
-              posicaoX + 4,
-              posicaoY + 7,
-              {
-                width:
-                  largura - 8,
-                align: 'left',
-              },
-            );
-
-            posicaoX += largura;
-          }
-
-          posicaoY += 24;
-        };
-
-        const adicionarPagina = () => {
-          documento.addPage({
-            size: 'A4',
-            layout: 'landscape',
-            margin: 36,
-          });
-
-          posicaoY =
-            documento.page
-              .margins.top;
-
-          desenharCabecalho();
-        };
-
-        const desenharLinha = (
-          valores: string[],
-        ) => {
-          documento
-            .font('Helvetica')
-            .fontSize(7.5);
-
-          const alturas =
-            valores.map(
-              (valor, indice) =>
-                documento.heightOfString(
-                  valor,
-                  {
-                    width:
-                      larguras[indice] -
-                      8,
-                  },
-                ),
-            );
-
-          const alturaLinha =
-            Math.max(
-              22,
-              ...alturas.map(
-                (altura) =>
-                  altura + 10,
-              ),
-            );
-
-          const limitePagina =
-            documento.page.height -
-            documento.page
-              .margins.bottom;
-
-          if (
-            posicaoY +
-              alturaLinha >
-            limitePagina
-          ) {
-            adicionarPagina();
-          }
-
-          let posicaoX =
-            documento.page
-              .margins.left;
-
-          for (
-            let indice = 0;
-            indice <
-            valores.length;
-            indice += 1
-          ) {
-            const largura =
-              larguras[indice];
-
-            documento
-              .rect(
-                posicaoX,
-                posicaoY,
-                largura,
-                alturaLinha,
-              )
-              .stroke();
-
-            documento.text(
-              valores[indice],
-              posicaoX + 4,
-              posicaoY + 5,
-              {
-                width:
-                  largura - 8,
-                align: 'left',
-              },
-            );
-
-            posicaoX += largura;
-          }
-
-          posicaoY += alturaLinha;
-        };
+        posicaoY = documento.page.margins.top;
 
         desenharCabecalho();
+      };
 
-        for (const tarefa of tarefas) {
-          desenharLinha([
-            tarefa.titulo,
+      const desenharLinha = (valores: string[]) => {
+        documento.font('Helvetica').fontSize(7.5);
 
-            tarefa
-              .tipoAtividade
-              .nome,
+        const alturas = valores.map((valor, indice) =>
+          documento.heightOfString(valor, {
+            width: larguras[indice] - 8,
+          }),
+        );
 
-            tarefa.responsavel
-              .nome,
+        const alturaLinha = Math.max(
+          22,
+          ...alturas.map((altura) => altura + 10),
+        );
 
-            this.serializarEnum(
-              tarefa.escopo,
-            ),
+        const limitePagina =
+          documento.page.height - documento.page.margins.bottom;
 
-            this.formatarData(
-              tarefa.prazoAtual,
-            ),
-
-            this.serializarEnum(
-              tarefa.status,
-            ),
-
-            String(
-              tarefa._count
-                .reagendamentos,
-            ),
-          ]);
+        if (posicaoY + alturaLinha > limitePagina) {
+          adicionarPagina();
         }
 
-        if (tarefas.length === 0) {
-          documento
-            .font('Helvetica')
-            .fontSize(10)
-            .text(
-              'Nenhuma tarefa encontrada para os filtros informados.',
-              documento.page
-                .margins.left,
-              posicaoY + 12,
-            );
+        let posicaoX = documento.page.margins.left;
+
+        for (let indice = 0; indice < valores.length; indice += 1) {
+          const largura = larguras[indice];
+
+          documento.rect(posicaoX, posicaoY, largura, alturaLinha).stroke();
+
+          documento.text(valores[indice], posicaoX + 4, posicaoY + 5, {
+            width: largura - 8,
+            align: 'left',
+          });
+
+          posicaoX += largura;
         }
 
-        documento.end();
-      },
-    );
+        posicaoY += alturaLinha;
+      };
+
+      desenharCabecalho();
+
+      for (const tarefa of tarefas) {
+        desenharLinha([
+          tarefa.titulo,
+
+          tarefa.tipoAtividade.nome,
+
+          tarefa.responsavel.nome,
+
+          this.serializarEnum(tarefa.escopo),
+
+          this.formatarData(tarefa.prazoAtual),
+
+          this.serializarEnum(tarefa.status),
+
+          String(tarefa._count.reagendamentos),
+        ]);
+      }
+
+      if (tarefas.length === 0) {
+        documento
+          .font('Helvetica')
+          .fontSize(10)
+          .text(
+            'Nenhuma tarefa encontrada para os filtros informados.',
+            documento.page.margins.left,
+            posicaoY + 12,
+          );
+      }
+
+      documento.end();
+    });
   }
 
   private async buscarTarefas(
     query: RelatorioTarefasQueryDto,
     usuario: UsuarioAutenticado,
   ): Promise<TarefaRelatorio[]> {
-    const inicio =
-      query.inicio
-        ? this.converterInicio(
-            query.inicio,
-          )
-        : undefined;
+    const inicio = query.inicio
+      ? this.converterInicio(query.inicio)
+      : undefined;
 
-    const fim =
-      query.fim
-        ? this.converterFim(
-            query.fim,
-          )
-        : undefined;
+    const fim = query.fim ? this.converterFim(query.fim) : undefined;
 
-    if (
-      inicio &&
-      fim &&
-      inicio > fim
-    ) {
+    if (inicio && fim && inicio > fim) {
       throw new BadRequestException(
         'A data inicial não pode ser posterior à data final.',
       );
@@ -571,27 +398,23 @@ export class ReportsService {
        */
       ...(usuario.papel === Papel.MENTOR
         ? {
-            responsavelId:
-              usuario.id,
+            responsavelId: usuario.id,
           }
         : query.mentorId
           ? {
-              responsavelId:
-                query.mentorId,
+              responsavelId: query.mentorId,
             }
           : {}),
 
       ...(query.cursoId
         ? {
-            cursoId:
-              query.cursoId,
+            cursoId: query.cursoId,
           }
         : {}),
 
       ...(query.turmaId
         ? {
-            turmaId:
-              query.turmaId,
+            turmaId: query.turmaId,
           }
         : {}),
 
@@ -614,30 +437,24 @@ export class ReportsService {
         : {}),
     };
 
-    const tarefas =
-      await this.prisma.tarefa.findMany({
-        where,
+    const tarefas = await this.prisma.tarefa.findMany({
+      where,
 
-        take:
-          MAXIMO_REGISTROS + 1,
+      take: MAXIMO_REGISTROS + 1,
 
-        orderBy: [
-          {
-            prazoAtual: 'asc',
-          },
-          {
-            titulo: 'asc',
-          },
-        ],
+      orderBy: [
+        {
+          prazoAtual: 'asc',
+        },
+        {
+          titulo: 'asc',
+        },
+      ],
 
-        select:
-          tarefaRelatorioSelect,
-      });
+      select: tarefaRelatorioSelect,
+    });
 
-    if (
-      tarefas.length >
-      MAXIMO_REGISTROS
-    ) {
+    if (tarefas.length > MAXIMO_REGISTROS) {
       throw new BadRequestException(
         `O relatório ultrapassou ${MAXIMO_REGISTROS} registros. Informe filtros mais específicos.`,
       );
@@ -646,113 +463,69 @@ export class ReportsService {
     return tarefas;
   }
 
-  private converterInicio(
-    valor: string,
-  ): Date {
-    if (
-      DATA_SIMPLES_REGEX.test(
-        valor,
-      )
-    ) {
-      return new Date(
-        `${valor}T00:00:00.000-03:00`,
-      );
+  private converterInicio(valor: string): Date {
+    if (DATA_SIMPLES_REGEX.test(valor)) {
+      return new Date(`${valor}T00:00:00.000-03:00`);
     }
 
     return new Date(valor);
   }
 
-  private converterFim(
-    valor: string,
-  ): Date {
-    if (
-      DATA_SIMPLES_REGEX.test(
-        valor,
-      )
-    ) {
-      return new Date(
-        `${valor}T23:59:59.999-03:00`,
-      );
+  private converterFim(valor: string): Date {
+    if (DATA_SIMPLES_REGEX.test(valor)) {
+      return new Date(`${valor}T23:59:59.999-03:00`);
     }
 
     return new Date(valor);
   }
 
-  private formatarTarefa(
-    tarefa: TarefaRelatorio,
-  ) {
+  private formatarTarefa(tarefa: TarefaRelatorio) {
     return {
       id: tarefa.id,
+      projeto: tarefa.projeto,
       titulo: tarefa.titulo,
       descricao: tarefa.descricao,
 
       tipoAtividade: {
-        id:
-          tarefa.tipoAtividade.id,
-        nome:
-          tarefa.tipoAtividade.nome,
+        id: tarefa.tipoAtividade.id,
+        nome: tarefa.tipoAtividade.nome,
       },
 
-      responsavel:
-        tarefa.responsavel,
+      responsavel: tarefa.responsavel,
 
-      criadoPor:
-        tarefa.criadoPor,
+      criadoPor: tarefa.criadoPor,
 
-      escopo:
-        this.serializarEnum(
-          tarefa.escopo,
-        ),
+      escopo: this.serializarEnum(tarefa.escopo),
 
-      curso:
-        tarefa.curso,
+      curso: tarefa.curso,
 
-      turma:
-        tarefa.turma,
+      turma: tarefa.turma,
 
-      prazoInicio:
-        tarefa.prazoInicio,
+      prazoInicio: tarefa.prazoInicio,
 
-      prazoAtual:
-        tarefa.prazoAtual,
+      prazoAtual: tarefa.prazoAtual,
 
-      status:
-        this.serializarEnum(
-          tarefa.status,
-        ),
+      status: this.serializarEnum(tarefa.status),
 
-      quantidadeReagendamentos:
-        tarefa._count
-          .reagendamentos,
+      quantidadeReagendamentos: tarefa._count.reagendamentos,
 
-      quantidadeAnexos:
-        tarefa._count.anexos,
+      quantidadeLinks: tarefa.links.length,
 
-      criadoEm:
-        tarefa.criadoEm,
+      criadoEm: tarefa.criadoEm,
 
-      concluidoEm:
-        tarefa.concluidoEm,
+      concluidoEm: tarefa.concluidoEm,
     };
   }
 
-  private serializarEnum(
-    valor: string,
-  ): string {
+  private serializarEnum(valor: string): string {
     return valor.toLowerCase();
   }
 
-  private formatarData(
-    data: Date,
-  ): string {
-    return new Intl.DateTimeFormat(
-      'pt-BR',
-      {
-        timeZone:
-          'America/Fortaleza',
-        dateStyle: 'short',
-        timeStyle: 'short',
-      },
-    ).format(data);
+  private formatarData(data: Date): string {
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Fortaleza',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(data);
   }
 }

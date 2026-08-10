@@ -6,18 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { basename } from 'node:path';
-import { GoogleDriveService } from '../google-drive/google-drive.service';
-
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import {
   EscopoTarefa,
   Papel,
+  StatusProjeto,
   StatusTarefa,
 } from '../generated/prisma/client';
-import type {
-  Prisma,
-} from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   CriarTarefaDto,
@@ -31,6 +27,7 @@ import type { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
 
 const tarefaResumoSelect = {
   id: true,
+  projetoId: true,
   tipoAtividadeId: true,
   titulo: true,
   descricao: true,
@@ -45,6 +42,11 @@ const tarefaResumoSelect = {
   criadoEm: true,
   atualizadoEm: true,
   concluidoEm: true,
+  links: true,
+
+  projeto: {
+    select: { id: true, nome: true, prazoFinal: true, status: true },
+  },
 
   tipoAtividade: {
     select: {
@@ -93,29 +95,6 @@ const tarefaResumoSelect = {
 const tarefaDetalheSelect = {
   ...tarefaResumoSelect,
 
-  anexos: {
-    orderBy: {
-      criadoEm: 'asc',
-    },
-
-    select: {
-      id: true,
-      nomeArquivo: true,
-      mimeType: true,
-      tamanhoBytes: true,
-      enviadoPorId: true,
-      criadoEm: true,
-
-      enviadoPor: {
-        select: {
-          id: true,
-          nome: true,
-          email: true,
-        },
-      },
-    },
-  },
-
   reagendamentos: {
     orderBy: {
       criadoEm: 'asc',
@@ -140,27 +119,19 @@ const tarefaDetalheSelect = {
   },
 } satisfies Prisma.TarefaSelect;
 
-type TarefaResumo =
-  Prisma.TarefaGetPayload<{
-    select: typeof tarefaResumoSelect;
-  }>;
+type TarefaResumo = Prisma.TarefaGetPayload<{
+  select: typeof tarefaResumoSelect;
+}>;
 
-type TarefaDetalhe =
-  Prisma.TarefaGetPayload<{
-    select: typeof tarefaDetalheSelect;
-  }>;
+type TarefaDetalhe = Prisma.TarefaGetPayload<{
+  select: typeof tarefaDetalheSelect;
+}>;
 
 @Injectable()
 export class TasksService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly googleDriveService: GoogleDriveService,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async listar(
-    query: ListarTarefasQueryDto,
-    usuario: UsuarioAutenticado,
-  ) {
+  async listar(query: ListarTarefasQueryDto, usuario: UsuarioAutenticado) {
     const pagina = query.pagina ?? 1;
     const limite = query.limite ?? 20;
 
@@ -173,178 +144,149 @@ export class TasksService {
       : undefined;
 
     const where: Prisma.TarefaWhereInput = {
+      ...(query.projetoId ? { projetoId: query.projetoId } : {}),
       /*
        * O mentor sempre visualiza somente as tarefas
        * atribuídas a ele, ignorando responsavelId.
        */
       ...(usuario.papel === Papel.MENTOR
         ? {
-          responsavelId: usuario.id,
-        }
+            responsavelId: usuario.id,
+          }
         : query.responsavelId
           ? {
-            responsavelId:
-              query.responsavelId,
-          }
+              responsavelId: query.responsavelId,
+            }
           : {}),
 
       ...(query.cursoId
         ? {
-          cursoId: query.cursoId,
-        }
+            cursoId: query.cursoId,
+          }
         : {}),
 
       ...(query.turmaId
         ? {
-          turmaId: query.turmaId,
-        }
+            turmaId: query.turmaId,
+          }
         : {}),
 
       ...(status
         ? {
-          status,
-        }
+            status,
+          }
         : {}),
 
       ...(escopo
         ? {
-          escopo,
-        }
+            escopo,
+          }
         : {}),
     };
 
-    const [tarefas, total] =
-      await this.prisma.$transaction([
-        this.prisma.tarefa.findMany({
-          where,
-          skip: (pagina - 1) * limite,
-          take: limite,
-          orderBy: [
-            {
-              prazoAtual: 'asc',
-            },
-            {
-              criadoEm: 'asc',
-            },
-          ],
-          select: tarefaResumoSelect,
-        }),
+    const [tarefas, total] = await this.prisma.$transaction([
+      this.prisma.tarefa.findMany({
+        where,
+        skip: (pagina - 1) * limite,
+        take: limite,
+        orderBy: [
+          {
+            prazoAtual: 'asc',
+          },
+          {
+            criadoEm: 'asc',
+          },
+        ],
+        select: tarefaResumoSelect,
+      }),
 
-        this.prisma.tarefa.count({
-          where,
-        }),
-      ]);
+      this.prisma.tarefa.count({
+        where,
+      }),
+    ]);
 
     return {
-      data: tarefas.map((tarefa) =>
-        this.formatarResumo(tarefa),
-      ),
+      data: tarefas.map((tarefa) => this.formatarResumo(tarefa)),
 
       meta: {
         pagina,
         limite,
         total,
-        totalPaginas:
-          Math.ceil(total / limite),
+        totalPaginas: Math.ceil(total / limite),
       },
     };
   }
 
-  async buscarPorId(
-    tarefaId: string,
-    usuario: UsuarioAutenticado,
-  ) {
-    const tarefa =
-      await this.prisma.tarefa.findFirst({
-        where: {
-          id: tarefaId,
+  async buscarPorId(tarefaId: string, usuario: UsuarioAutenticado) {
+    const tarefa = await this.prisma.tarefa.findFirst({
+      where: {
+        id: tarefaId,
 
-          ...(usuario.papel === Papel.MENTOR
-            ? {
+        ...(usuario.papel === Papel.MENTOR
+          ? {
               responsavelId: usuario.id,
             }
-            : {}),
-        },
+          : {}),
+      },
 
-        select: tarefaDetalheSelect,
-      });
+      select: tarefaDetalheSelect,
+    });
 
     if (!tarefa) {
-      throw new NotFoundException(
-        'Tarefa não encontrada ou não acessível.',
-      );
+      throw new NotFoundException('Tarefa não encontrada ou não acessível.');
     }
 
     return this.formatarDetalhe(tarefa);
   }
 
-  async criar(
-    dto: CriarTarefaDto,
-    usuario: UsuarioAutenticado,
-  ) {
-    const prazoInicio = dto.prazoInicio
-      ? new Date(dto.prazoInicio)
-      : null;
+  async criar(dto: CriarTarefaDto, usuario: UsuarioAutenticado) {
+    const prazoInicio = dto.prazoInicio ? new Date(dto.prazoInicio) : null;
 
-    const prazoAtual =
-      new Date(dto.prazoAtual);
+    const prazoAtual = new Date(dto.prazoAtual);
 
-    if (
-      prazoInicio &&
-      prazoAtual < prazoInicio
-    ) {
+    if (prazoInicio && prazoAtual < prazoInicio) {
       throw new BadRequestException(
         'O prazo final não pode ser anterior ao prazo inicial.',
       );
     }
 
-    const tipoAtividade =
-      await this.prisma.tipoAtividade.findUnique({
-        where: {
-          id: dto.tipoAtividadeId,
-        },
+    const tipoAtividade = await this.prisma.tipoAtividade.findUnique({
+      where: {
+        id: dto.tipoAtividadeId,
+      },
 
-        select: {
-          id: true,
-          ativo: true,
-        },
-      });
+      select: {
+        id: true,
+        ativo: true,
+      },
+    });
 
     if (!tipoAtividade) {
-      throw new NotFoundException(
-        'Tipo de atividade não encontrado.',
-      );
+      throw new NotFoundException('Tipo de atividade não encontrado.');
     }
 
     if (!tipoAtividade.ativo) {
-      throw new BadRequestException(
-        'O tipo de atividade está inativo.',
-      );
+      throw new BadRequestException('O tipo de atividade está inativo.');
     }
 
-    const responsavel =
-      await this.prisma.usuario.findUnique({
-        where: {
-          id: dto.responsavelId,
-        },
+    const responsavel = await this.prisma.usuario.findUnique({
+      where: {
+        id: dto.responsavelId,
+      },
 
-        select: {
-          id: true,
-          ativo: true,
-          papel: true,
-        },
-      });
+      select: {
+        id: true,
+        ativo: true,
+        papel: true,
+      },
+    });
 
     if (!responsavel) {
-      throw new NotFoundException(
-        'Responsável não encontrado.',
-      );
+      throw new NotFoundException('Responsável não encontrado.');
     }
 
     if (!responsavel.ativo) {
-      throw new BadRequestException(
-        'O responsável está inativo.',
-      );
+      throw new BadRequestException('O responsável está inativo.');
     }
 
     if (responsavel.papel !== Papel.MENTOR) {
@@ -357,24 +299,42 @@ export class TasksService {
      * Coordenadora cria para qualquer mentor.
      * Mentor cria somente para si próprio.
      */
-    if (
-      usuario.papel === Papel.MENTOR &&
-      dto.responsavelId !== usuario.id
-    ) {
+    if (usuario.papel === Papel.MENTOR && dto.responsavelId !== usuario.id) {
       throw new ForbiddenException(
         'Mentores só podem criar tarefas para si mesmos.',
       );
     }
 
-    const escopo =
-      this.converterEscopo(dto.escopo);
+    const projeto = await this.prisma.projeto.findFirst({
+      where: {
+        id: dto.projetoId,
+        status: {
+          in: [StatusProjeto.PLANEJAMENTO, StatusProjeto.EM_ANDAMENTO],
+        },
+        ...(usuario.papel === Papel.MENTOR
+          ? { tarefas: { some: { responsavelId: usuario.id } } }
+          : {}),
+      },
+      select: {
+        id: true,
+        prazoFinal: true,
+      },
+    });
 
-    const referencias =
-      await this.validarEscopo(
-        escopo,
-        dto,
-        usuario,
+    if (!projeto) {
+      throw new NotFoundException(
+        'Projeto não encontrado, encerrado ou não acessível.',
       );
+    }
+
+    if (prazoAtual > projeto.prazoFinal) {
+      throw new BadRequestException(
+        'O prazo da tarefa não pode ultrapassar o prazo final do projeto.',
+      );
+    }
+
+    const escopo = this.converterEscopo(dto.escopo);
+    const referencias = await this.validarEscopo(escopo, dto, usuario);
 
     /*
      * Tarefas de curso ou turma só podem ser
@@ -387,35 +347,37 @@ export class TasksService {
       );
     }
 
-    const tarefa =
-      await this.prisma.tarefa.create({
-        data: {
-          tipoAtividadeId:
-            dto.tipoAtividadeId,
+    const tarefa = await this.prisma.tarefa.create({
+      data: {
+        projetoId: projeto.id,
+        tipoAtividadeId: dto.tipoAtividadeId,
 
-          titulo: dto.titulo
-            .trim()
-            .replace(/\s+/g, ' '),
+        titulo: dto.titulo.trim().replace(/\s+/g, ' '),
 
-          descricao:
-            dto.descricao?.trim() || null,
+        descricao: dto.descricao?.trim() || null,
 
-          criadoPorId: usuario.id,
-          responsavelId: dto.responsavelId,
+        criadoPorId: usuario.id,
+        responsavelId: dto.responsavelId,
 
-          escopo,
-          cursoId: referencias.cursoId,
-          turmaId: referencias.turmaId,
+        escopo,
+        cursoId: referencias.cursoId,
+        turmaId: referencias.turmaId,
 
-          prazoInicio,
-          prazoAtual,
+        prazoInicio,
+        prazoAtual,
 
-          status: StatusTarefa.PENDENTE,
-          concluidoEm: null,
-        },
+        status: StatusTarefa.PENDENTE,
+        concluidoEm: null,
+        links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
+      },
 
-        select: tarefaDetalheSelect,
-      });
+      select: tarefaDetalheSelect,
+    });
+
+    await this.prisma.projeto.updateMany({
+      where: { id: projeto.id, status: StatusProjeto.PLANEJAMENTO },
+      data: { status: StatusProjeto.EM_ANDAMENTO },
+    });
 
     return this.formatarDetalhe(tarefa);
   }
@@ -425,114 +387,10 @@ export class TasksService {
     dto: ReagendarTarefaDto,
     usuario: UsuarioAutenticado,
   ) {
-    const prazoNovo =
-      new Date(dto.prazoNovo);
+    const prazoNovo = new Date(dto.prazoNovo);
 
-    return this.prisma.$transaction(
-      async (transaction) => {
-        const tarefa =
-          await transaction.tarefa.findUnique({
-            where: {
-              id: tarefaId,
-            },
-
-            select: {
-              id: true,
-              responsavelId: true,
-              status: true,
-              prazoInicio: true,
-              prazoAtual: true,
-            },
-          });
-
-        if (!tarefa) {
-          throw new NotFoundException(
-            'Tarefa não encontrada.',
-          );
-        }
-
-        const podeReagendar =
-          usuario.papel ===
-          Papel.COORDENADORA ||
-          tarefa.responsavelId ===
-          usuario.id;
-
-        if (!podeReagendar) {
-          throw new ForbiddenException(
-            'Só o responsável pela tarefa ou a coordenadora pode reagendá-la.',
-          );
-        }
-
-        if (
-          tarefa.status ===
-          StatusTarefa.CONCLUIDA
-        ) {
-          throw new ConflictException(
-            'Uma tarefa concluída não pode ser reagendada.',
-          );
-        }
-
-        if (
-          tarefa.prazoInicio &&
-          prazoNovo < tarefa.prazoInicio
-        ) {
-          throw new BadRequestException(
-            'O novo prazo não pode ser anterior ao prazo inicial.',
-          );
-        }
-
-        if (
-          prazoNovo.getTime() ===
-          tarefa.prazoAtual.getTime()
-        ) {
-          throw new BadRequestException(
-            'O novo prazo deve ser diferente do prazo atual.',
-          );
-        }
-
-        const atualizada =
-          await transaction.tarefa.update({
-            where: {
-              id: tarefa.id,
-            },
-
-            data: {
-              prazoAtual: prazoNovo,
-
-              reagendamentos: {
-                create: {
-                  prazoAnterior:
-                    tarefa.prazoAtual,
-
-                  prazoNovo,
-
-                  justificativa:
-                    dto.justificativa?.trim() ||
-                    null,
-
-                  reagendadoPorId:
-                    usuario.id,
-                },
-              },
-            },
-
-            select: tarefaDetalheSelect,
-          });
-
-        return this.formatarDetalhe(
-          atualizada,
-        );
-      },
-    );
-  }
-
-  async anexar(
-    tarefaId: string,
-    arquivo: Express.Multer.File,
-    usuario: UsuarioAutenticado,
-  ) {
-    const tarefa =
-      await this.prisma.tarefa.findUnique({
+    return this.prisma.$transaction(async (transaction) => {
+      const tarefa = await transaction.tarefa.findUnique({
         where: {
           id: tarefaId,
         },
@@ -540,255 +398,127 @@ export class TasksService {
         select: {
           id: true,
           responsavelId: true,
+          status: true,
+          prazoInicio: true,
+          prazoAtual: true,
+          projeto: { select: { prazoFinal: true } },
         },
       });
 
-    if (!tarefa) {
-      throw new NotFoundException(
-        'Tarefa não encontrada.',
-      );
-    }
+      if (!tarefa) {
+        throw new NotFoundException('Tarefa não encontrada.');
+      }
 
-    this.validarPermissaoAnexo(
-      tarefa.responsavelId,
-      usuario,
-    );
+      const podeReagendar =
+        usuario.papel === Papel.COORDENADORA ||
+        tarefa.responsavelId === usuario.id;
 
-    this.validarArquivo(arquivo);
-
-    const nomeArquivo =
-      this.sanitizarNomeArquivo(
-        arquivo.originalname,
-      );
-
-    const arquivoDrive =
-      await this.googleDriveService
-        .uploadArquivo(
-          nomeArquivo,
-          arquivo.buffer,
-          arquivo.mimetype,
+      if (!podeReagendar) {
+        throw new ForbiddenException(
+          'Só o responsável pela tarefa ou a coordenadora pode reagendá-la.',
         );
+      }
 
-    try {
-      await this.prisma.anexoTarefa.create({
-        data: {
-          tarefaId: tarefa.id,
-          nomeArquivo,
-          mimeType:
-            arquivo.mimetype,
-          tamanhoBytes:
-            arquivo.size,
-          driveFileId:
-            arquivoDrive.id,
-          enviadoPorId:
-            usuario.id,
-        },
-      });
-    } catch (erro: unknown) {
-      await this.googleDriveService
-        .excluirArquivoSilenciosamente(
-          arquivoDrive.id,
+      if (tarefa.status === StatusTarefa.CONCLUIDA) {
+        throw new ConflictException(
+          'Uma tarefa concluída não pode ser reagendada.',
         );
+      }
 
-      throw erro;
-    }
+      if (tarefa.prazoInicio && prazoNovo < tarefa.prazoInicio) {
+        throw new BadRequestException(
+          'O novo prazo não pode ser anterior ao prazo inicial.',
+        );
+      }
 
-    return this.buscarPorId(
-      tarefa.id,
-      usuario,
-    );
-  }
+      if (prazoNovo > tarefa.projeto.prazoFinal) {
+        throw new BadRequestException(
+          'O novo prazo não pode ultrapassar o prazo final do projeto.',
+        );
+      }
 
-  async gerarLinkAnexo(
-    tarefaId: string,
-    anexoId: string,
-    usuario: UsuarioAutenticado,
-  ) {
-    const anexo =
-      await this.prisma.anexoTarefa.findFirst({
+      if (prazoNovo.getTime() === tarefa.prazoAtual.getTime()) {
+        throw new BadRequestException(
+          'O novo prazo deve ser diferente do prazo atual.',
+        );
+      }
+
+      const atualizada = await transaction.tarefa.update({
         where: {
-          id: anexoId,
-          tarefaId,
+          id: tarefa.id,
         },
 
-        select: {
-          id: true,
-          driveFileId: true,
+        data: {
+          prazoAtual: prazoNovo,
 
-          tarefa: {
-            select: {
-              responsavelId: true,
+          reagendamentos: {
+            create: {
+              prazoAnterior: tarefa.prazoAtual,
+
+              prazoNovo,
+
+              justificativa: dto.justificativa?.trim() || null,
+
+              reagendadoPorId: usuario.id,
             },
           },
         },
+
+        select: tarefaDetalheSelect,
       });
 
-    if (!anexo) {
-      throw new NotFoundException(
-        'Anexo não encontrado.',
-      );
-    }
+      return this.formatarDetalhe(atualizada);
+    });
+  }
 
-    this.validarPermissaoAnexo(
-      anexo.tarefa.responsavelId,
-      usuario,
-    );
+  async concluir(tarefaId: string, usuario: UsuarioAutenticado) {
+    return this.prisma.$transaction(async (transaction) => {
+      const tarefa = await transaction.tarefa.findUnique({
+        where: {
+          id: tarefaId,
+        },
 
-    const url =
-      await this.googleDriveService
-        .gerarLinkVisualizacao(
-          anexo.driveFileId,
+        select: tarefaDetalheSelect,
+      });
+
+      if (!tarefa) {
+        throw new NotFoundException('Tarefa não encontrada.');
+      }
+
+      const podeConcluir =
+        usuario.papel === Papel.COORDENADORA ||
+        tarefa.responsavelId === usuario.id;
+
+      if (!podeConcluir) {
+        throw new ForbiddenException(
+          'Só o responsável pela tarefa ou a coordenadora pode concluí-la.',
         );
+      }
 
-    return {
-      anexoId: anexo.id,
-      url,
-    };
-  }
+      /*
+       * Operação idempotente: se já estiver concluída,
+       * devolve o estado atual.
+       */
+      if (tarefa.status === StatusTarefa.CONCLUIDA) {
+        return this.formatarDetalhe(tarefa);
+      }
 
-  private validarPermissaoAnexo(
-    responsavelId: string,
-    usuario: UsuarioAutenticado,
-  ): void {
-    const permitido =
-      usuario.papel ===
-      Papel.COORDENADORA ||
-      responsavelId === usuario.id;
+      const atualizada = await transaction.tarefa.update({
+        where: {
+          id: tarefa.id,
+        },
 
-    if (!permitido) {
-      throw new ForbiddenException(
-        'Você não possui acesso aos anexos desta tarefa.',
-      );
-    }
-  }
+        data: {
+          status: StatusTarefa.CONCLUIDA,
 
-  private validarArquivo(
-    arquivo: Express.Multer.File,
-  ): void {
-    const tiposPermitidos =
-      new Set<string>([
-        'application/pdf',
+          concluidoEm: new Date(),
+        },
 
-        'image/jpeg',
-        'image/png',
-        'image/webp',
+        select: tarefaDetalheSelect,
+      });
 
-        'text/plain',
-        'text/csv',
-
-        'application/msword',
-        'application/vnd.ms-excel',
-        'application/vnd.ms-powerpoint',
-
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      ]);
-
-    if (!arquivo.buffer?.length) {
-      throw new BadRequestException(
-        'O arquivo está vazio.',
-      );
-    }
-
-    if (
-      !tiposPermitidos.has(
-        arquivo.mimetype,
-      )
-    ) {
-      throw new BadRequestException(
-        'Tipo de arquivo não permitido.',
-      );
-    }
-  }
-
-  private sanitizarNomeArquivo(
-    nomeOriginal: string,
-  ): string {
-    const nome = basename(nomeOriginal)
-      .replace(
-        /[\u0000-\u001f\u007f]/g,
-        '',
-      )
-      .trim()
-      .slice(0, 255);
-
-    if (!nome) {
-      throw new BadRequestException(
-        'Nome de arquivo inválido.',
-      );
-    }
-
-    return nome;
-  }
-
-  async concluir(
-    tarefaId: string,
-    usuario: UsuarioAutenticado,
-  ) {
-    return this.prisma.$transaction(
-      async (transaction) => {
-        const tarefa =
-          await transaction.tarefa.findUnique({
-            where: {
-              id: tarefaId,
-            },
-
-            select: tarefaDetalheSelect,
-          });
-
-        if (!tarefa) {
-          throw new NotFoundException(
-            'Tarefa não encontrada.',
-          );
-        }
-
-        const podeConcluir =
-          usuario.papel ===
-          Papel.COORDENADORA ||
-          tarefa.responsavelId ===
-          usuario.id;
-
-        if (!podeConcluir) {
-          throw new ForbiddenException(
-            'Só o responsável pela tarefa ou a coordenadora pode concluí-la.',
-          );
-        }
-
-        /*
-         * Operação idempotente: se já estiver concluída,
-         * devolve o estado atual.
-         */
-        if (
-          tarefa.status ===
-          StatusTarefa.CONCLUIDA
-        ) {
-          return this.formatarDetalhe(
-            tarefa,
-          );
-        }
-
-        const atualizada =
-          await transaction.tarefa.update({
-            where: {
-              id: tarefa.id,
-            },
-
-            data: {
-              status:
-                StatusTarefa.CONCLUIDA,
-
-              concluidoEm: new Date(),
-            },
-
-            select: tarefaDetalheSelect,
-          });
-
-        return this.formatarDetalhe(
-          atualizada,
-        );
-      },
-    );
+      return this.formatarDetalhe(atualizada);
+    });
   }
 
   private async validarEscopo(
@@ -813,29 +543,26 @@ export class TasksService {
           );
         }
 
-        const curso =
-          await this.prisma.curso.findFirst({
-            where: {
-              id: dto.cursoId,
-              ativo: true,
+        const curso = await this.prisma.curso.findFirst({
+          where: {
+            id: dto.cursoId,
+            ativo: true,
 
-              ...(usuario.papel ===
-                Papel.MENTOR
-                ? {
+            ...(usuario.papel === Papel.MENTOR
+              ? {
                   mentores: {
                     some: {
-                      mentorId:
-                        usuario.id,
+                      mentorId: usuario.id,
                     },
                   },
                 }
-                : {}),
-            },
+              : {}),
+          },
 
-            select: {
-              id: true,
-            },
-          });
+          select: {
+            id: true,
+          },
+        });
 
         if (!curso) {
           throw new NotFoundException(
@@ -862,35 +589,32 @@ export class TasksService {
           );
         }
 
-        const turma =
-          await this.prisma.turma.findFirst({
-            where: {
-              id: dto.turmaId,
-              cursoId: dto.cursoId,
+        const turma = await this.prisma.turma.findFirst({
+          where: {
+            id: dto.turmaId,
+            cursoId: dto.cursoId,
+            ativo: true,
+
+            curso: {
               ativo: true,
 
-              curso: {
-                ativo: true,
-
-                ...(usuario.papel ===
-                  Papel.MENTOR
-                  ? {
+              ...(usuario.papel === Papel.MENTOR
+                ? {
                     mentores: {
                       some: {
-                        mentorId:
-                          usuario.id,
+                        mentorId: usuario.id,
                       },
                     },
                   }
-                  : {}),
-              },
+                : {}),
             },
+          },
 
-            select: {
-              id: true,
-              cursoId: true,
-            },
-          });
+          select: {
+            id: true,
+            cursoId: true,
+          },
+        });
 
         if (!turma) {
           throw new NotFoundException(
@@ -905,10 +629,7 @@ export class TasksService {
       }
 
       case EscopoTarefa.EVENTO_MACRO: {
-        if (
-          dto.cursoId ||
-          dto.turmaId
-        ) {
+        if (dto.cursoId || dto.turmaId) {
           throw new BadRequestException(
             'Tarefas de evento_macro não devem possuir cursoId nem turmaId.',
           );
@@ -926,17 +647,16 @@ export class TasksService {
     responsavelId: string,
     cursoId: string,
   ): Promise<void> {
-    const vinculo =
-      await this.prisma.cursoMentor.findFirst({
-        where: {
-          cursoId,
-          mentorId: responsavelId,
-        },
+    const vinculo = await this.prisma.cursoMentor.findFirst({
+      where: {
+        cursoId,
+        mentorId: responsavelId,
+      },
 
-        select: {
-          cursoId: true,
-        },
-      });
+      select: {
+        cursoId: true,
+      },
+    });
 
     if (!vinculo) {
       throw new BadRequestException(
@@ -945,9 +665,7 @@ export class TasksService {
     }
   }
 
-  private converterEscopo(
-    valor: EscopoTarefaEntrada,
-  ): EscopoTarefa {
+  private converterEscopo(valor: EscopoTarefaEntrada): EscopoTarefa {
     switch (valor) {
       case 'curso':
         return EscopoTarefa.CURSO;
@@ -960,9 +678,7 @@ export class TasksService {
     }
   }
 
-  private converterStatus(
-    valor: StatusTarefaEntrada,
-  ): StatusTarefa {
+  private converterStatus(valor: StatusTarefaEntrada): StatusTarefa {
     switch (valor) {
       case 'pendente':
         return StatusTarefa.PENDENTE;
@@ -972,9 +688,7 @@ export class TasksService {
     }
   }
 
-  private serializarEscopo(
-    escopo: EscopoTarefa,
-  ): EscopoTarefaEntrada {
+  private serializarEscopo(escopo: EscopoTarefa): EscopoTarefaEntrada {
     switch (escopo) {
       case EscopoTarefa.CURSO:
         return 'curso';
@@ -987,9 +701,7 @@ export class TasksService {
     }
   }
 
-  private serializarStatus(
-    status: StatusTarefa,
-  ): StatusTarefaEntrada {
+  private serializarStatus(status: StatusTarefa): StatusTarefaEntrada {
     switch (status) {
       case StatusTarefa.PENDENTE:
         return 'pendente';
@@ -999,115 +711,72 @@ export class TasksService {
     }
   }
 
-  private formatarResumo(
-    tarefa: TarefaResumo,
-  ) {
+  private formatarResumo(tarefa: TarefaResumo) {
     return {
       id: tarefa.id,
 
-      tipoAtividadeId:
-        tarefa.tipoAtividadeId,
+      projetoId: tarefa.projetoId,
+      projetoNome: tarefa.projeto.nome,
 
-      tipoAtividadeNome:
-        tarefa.tipoAtividade.nome,
+      tipoAtividadeId: tarefa.tipoAtividadeId,
+
+      tipoAtividadeNome: tarefa.tipoAtividade.nome,
 
       titulo: tarefa.titulo,
       descricao: tarefa.descricao,
 
-      criadoPorId:
-        tarefa.criadoPorId,
+      criadoPorId: tarefa.criadoPorId,
 
       criadoPor: tarefa.criadoPor,
 
-      responsavelId:
-        tarefa.responsavelId,
+      responsavelId: tarefa.responsavelId,
 
       responsavel: tarefa.responsavel,
 
-      escopo:
-        this.serializarEscopo(
-          tarefa.escopo,
-        ),
+      escopo: this.serializarEscopo(tarefa.escopo),
 
       cursoId: tarefa.cursoId,
-      cursoNome:
-        tarefa.curso?.nome ?? null,
+      cursoNome: tarefa.curso?.nome ?? null,
 
       turmaId: tarefa.turmaId,
-      turmaCodigo:
-        tarefa.turma?.codigo ?? null,
+      turmaCodigo: tarefa.turma?.codigo ?? null,
 
-      prazoInicio:
-        tarefa.prazoInicio,
+      prazoInicio: tarefa.prazoInicio,
 
-      prazoAtual:
-        tarefa.prazoAtual,
+      prazoAtual: tarefa.prazoAtual,
 
-      status:
-        this.serializarStatus(
-          tarefa.status,
-        ),
+      status: this.serializarStatus(tarefa.status),
 
       criadoEm: tarefa.criadoEm,
-      atualizadoEm:
-        tarefa.atualizadoEm,
+      atualizadoEm: tarefa.atualizadoEm,
 
-      concluidoEm:
-        tarefa.concluidoEm,
+      concluidoEm: tarefa.concluidoEm,
 
-      quantidadeReagendamentos:
-        tarefa._count.reagendamentos,
+      links: tarefa.links,
+
+      quantidadeReagendamentos: tarefa._count.reagendamentos,
     };
   }
 
-  private formatarDetalhe(
-    tarefa: TarefaDetalhe,
-  ) {
+  private formatarDetalhe(tarefa: TarefaDetalhe) {
     return {
       ...this.formatarResumo(tarefa),
 
-      anexos: tarefa.anexos.map(
-        (anexo) => ({
-          id: anexo.id,
-          nomeArquivo:
-            anexo.nomeArquivo,
-          mimeType:
-            anexo.mimeType,
-          tamanhoBytes:
-            anexo.tamanhoBytes,
-          enviadoPorId:
-            anexo.enviadoPorId,
-          enviadoPor:
-            anexo.enviadoPor,
-          criadoEm:
-            anexo.criadoEm,
-        }),
-      ),
+      reagendamentos: tarefa.reagendamentos.map((reagendamento) => ({
+        id: reagendamento.id,
 
-      reagendamentos:
-        tarefa.reagendamentos.map(
-          (reagendamento) => ({
-            id: reagendamento.id,
+        prazoAnterior: reagendamento.prazoAnterior,
 
-            prazoAnterior:
-              reagendamento.prazoAnterior,
+        prazoNovo: reagendamento.prazoNovo,
 
-            prazoNovo:
-              reagendamento.prazoNovo,
+        justificativa: reagendamento.justificativa,
 
-            justificativa:
-              reagendamento.justificativa,
+        reagendadoPorId: reagendamento.reagendadoPorId,
 
-            reagendadoPorId:
-              reagendamento.reagendadoPorId,
+        reagendadoPor: reagendamento.reagendadoPor,
 
-            reagendadoPor:
-              reagendamento.reagendadoPor,
-
-            criadoEm:
-              reagendamento.criadoEm,
-          }),
-        ),
+        criadoEm: reagendamento.criadoEm,
+      })),
     };
   }
 }

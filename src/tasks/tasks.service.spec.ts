@@ -2,46 +2,28 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
-import {
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from '@jest/globals';
-import {
-  Test,
-  type TestingModule,
-} from '@nestjs/testing';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { Test, type TestingModule } from '@nestjs/testing';
 
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
-import {
-  EscopoTarefa,
-  Papel,
-  StatusTarefa,
-} from '../generated/prisma/client';
-import { GoogleDriveService } from '../google-drive/google-drive.service';
+import { EscopoTarefa, Papel, StatusTarefa } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TasksService } from './tasks.service';
 
-const ID_COORDENADORA =
-  '11111111-1111-4111-8111-111111111111';
+const ID_COORDENADORA = '11111111-1111-4111-8111-111111111111';
 
-const ID_MENTOR =
-  '22222222-2222-4222-8222-222222222222';
+const ID_MENTOR = '22222222-2222-4222-8222-222222222222';
 
-const ID_OUTRO_MENTOR =
-  '33333333-3333-4333-8333-333333333333';
+const ID_OUTRO_MENTOR = '33333333-3333-4333-8333-333333333333';
 
-const ID_TIPO_ATIVIDADE =
-  '44444444-4444-4444-8444-444444444444';
+const ID_TIPO_ATIVIDADE = '44444444-4444-4444-8444-444444444444';
 
-const ID_CURSO =
-  '55555555-5555-4555-8555-555555555555';
+const ID_CURSO = '55555555-5555-4555-8555-555555555555';
 
-const ID_TAREFA =
-  '66666666-6666-4666-8666-666666666666';
+const ID_TAREFA = '66666666-6666-4666-8666-666666666666';
+const ID_PROJETO = '77777777-7777-4777-8777-777777777777';
 
 const coordenadora = {
   id: ID_COORDENADORA,
@@ -67,46 +49,36 @@ interface OpcoesTarefa {
   concluidoEm?: Date | null;
 }
 
-function criarTarefaDetalhe(
-  opcoes: OpcoesTarefa = {},
-) {
-  const responsavelId =
-    opcoes.responsavelId ??
-    ID_MENTOR;
+function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
+  const responsavelId = opcoes.responsavelId ?? ID_MENTOR;
 
-  const escopo =
-    opcoes.escopo ??
-    EscopoTarefa.EVENTO_MACRO;
+  const escopo = opcoes.escopo ?? EscopoTarefa.EVENTO_MACRO;
 
-  const status =
-    opcoes.status ??
-    StatusTarefa.PENDENTE;
+  const status = opcoes.status ?? StatusTarefa.PENDENTE;
 
-  const cursoId =
-    opcoes.cursoId ??
-    null;
+  const cursoId = opcoes.cursoId ?? null;
 
   const concluidoEm =
-    opcoes.concluidoEm !==
-    undefined
+    opcoes.concluidoEm !== undefined
       ? opcoes.concluidoEm
-      : status ===
-          StatusTarefa.CONCLUIDA
-        ? new Date(
-            '2026-08-10T15:00:00.000Z',
-          )
+      : status === StatusTarefa.CONCLUIDA
+        ? new Date('2026-08-10T15:00:00.000Z')
         : null;
 
   return {
     id: ID_TAREFA,
-    tipoAtividadeId:
-      ID_TIPO_ATIVIDADE,
-    titulo:
-      'Acompanhar planejamento',
+    projetoId: ID_PROJETO,
+    projeto: {
+      id: ID_PROJETO,
+      nome: 'Projeto teste',
+      prazoFinal: new Date('2026-08-30T21:00:00.000Z'),
+      status: 'EM_ANDAMENTO',
+    },
+    tipoAtividadeId: ID_TIPO_ATIVIDADE,
+    titulo: 'Acompanhar planejamento',
     descricao: null,
 
-    criadoPorId:
-      ID_COORDENADORA,
+    criadoPorId: ID_COORDENADORA,
 
     responsavelId,
     escopo,
@@ -114,19 +86,13 @@ function criarTarefaDetalhe(
     turmaId: null,
     prazoInicio: null,
 
-    prazoAtual: new Date(
-      '2026-08-15T21:00:00.000Z',
-    ),
+    prazoAtual: new Date('2026-08-15T21:00:00.000Z'),
 
     status,
 
-    criadoEm: new Date(
-      '2026-08-01T12:00:00.000Z',
-    ),
+    criadoEm: new Date('2026-08-01T12:00:00.000Z'),
 
-    atualizadoEm: new Date(
-      '2026-08-01T12:00:00.000Z',
-    ),
+    atualizadoEm: new Date('2026-08-01T12:00:00.000Z'),
 
     concluidoEm,
 
@@ -138,8 +104,7 @@ function criarTarefaDetalhe(
     criadoPor: {
       id: ID_COORDENADORA,
       nome: 'Coordenadora',
-      email:
-        'coordenadora@exemplo.com',
+      email: 'coordenadora@exemplo.com',
     },
 
     responsavel: {
@@ -162,15 +127,12 @@ function criarTarefaDetalhe(
     },
 
     reagendamentos: [],
-    anexos: [],
+    links: [],
   };
 }
 
 const criarMockAssincrono = () =>
-  jest.fn<
-    (...argumentos: unknown[]) =>
-      Promise<unknown>
-  >();
+  jest.fn<(...argumentos: unknown[]) => Promise<unknown>>();
 
 const prismaMock = {
   tipoAtividade: {
@@ -202,27 +164,12 @@ const prismaMock = {
     update: criarMockAssincrono(),
   },
 
-  anexoTarefa: {
+  projeto: {
     findFirst: criarMockAssincrono(),
-    create: criarMockAssincrono(),
+    updateMany: criarMockAssincrono(),
   },
 
-  $transaction: jest.fn<
-    (
-      argumento: unknown,
-    ) => Promise<unknown>
-  >(),
-};
-
-const googleDriveServiceMock = {
-  uploadArquivo:
-    criarMockAssincrono(),
-
-  gerarLinkVisualizacao:
-    criarMockAssincrono(),
-
-  excluirArquivoSilenciosamente:
-    criarMockAssincrono(),
+  $transaction: jest.fn<(argumento: unknown) => Promise<unknown>>(),
 };
 
 describe('TasksService', () => {
@@ -238,63 +185,44 @@ describe('TasksService', () => {
      * $transaction(async transaction => ...)
      */
     prismaMock.$transaction.mockImplementation(
-      async (
-        argumento: unknown,
-      ): Promise<unknown> => {
-        if (
-          typeof argumento ===
-          'function'
-        ) {
-          const callback =
-            argumento as (
-              transaction:
-                typeof prismaMock,
-            ) => Promise<unknown>;
+      async (argumento: unknown): Promise<unknown> => {
+        if (typeof argumento === 'function') {
+          const callback = argumento as (
+            transaction: typeof prismaMock,
+          ) => Promise<unknown>;
 
-          return callback(
-            prismaMock,
-          );
+          return callback(prismaMock);
         }
 
-        if (
-          Array.isArray(argumento)
-        ) {
-          return Promise.all(
-            argumento,
-          );
+        if (Array.isArray(argumento)) {
+          return Promise.all(argumento);
         }
 
-        throw new Error(
-          'Formato de transação inesperado no teste.',
-        );
+        throw new Error('Formato de transação inesperado no teste.');
       },
     );
 
-    const module: TestingModule =
-      await Test.createTestingModule({
-        providers: [
-          TasksService,
+    prismaMock.projeto.findFirst.mockResolvedValue({
+      id: ID_PROJETO,
+      escopo: EscopoTarefa.EVENTO_MACRO,
+      cursoId: null,
+      turmaId: null,
+      prazoFinal: new Date('2026-08-30T21:00:00.000Z'),
+    });
+    prismaMock.projeto.updateMany.mockResolvedValue({ count: 1 });
 
-          {
-            provide:
-              PrismaService,
-            useValue:
-              prismaMock,
-          },
-
-          {
-            provide:
-              GoogleDriveService,
-            useValue:
-              googleDriveServiceMock,
-          },
-        ],
-      }).compile();
-
-    service =
-      module.get<TasksService>(
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
         TasksService,
-      );
+
+        {
+          provide: PrismaService,
+          useValue: prismaMock,
+        },
+      ],
+    }).compile();
+
+    service = module.get<TasksService>(TasksService);
   });
 
   it('deve estar definido', () => {
@@ -302,41 +230,30 @@ describe('TasksService', () => {
   });
 
   it('deve restringir a listagem do mentor às próprias tarefas', async () => {
-    prismaMock.tarefa.findMany
-      .mockResolvedValue([]);
+    prismaMock.tarefa.findMany.mockResolvedValue([]);
 
-    prismaMock.tarefa.count
-      .mockResolvedValue(0);
+    prismaMock.tarefa.count.mockResolvedValue(0);
 
-    const resultado =
-      await service.listar(
-        {
-          pagina: 1,
-          limite: 20,
-        },
-        mentor,
-      );
+    const resultado = await service.listar(
+      {
+        pagina: 1,
+        limite: 20,
+      },
+      mentor,
+    );
 
-    expect(
-      prismaMock.tarefa.findMany,
-    ).toHaveBeenCalledWith(
+    expect(prismaMock.tarefa.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where:
-          expect.objectContaining({
-            responsavelId:
-              ID_MENTOR,
-          }),
+        where: expect.objectContaining({
+          responsavelId: ID_MENTOR,
+        }),
       }),
     );
 
-    expect(
-      prismaMock.tarefa.count,
-    ).toHaveBeenCalledWith({
-      where:
-        expect.objectContaining({
-          responsavelId:
-            ID_MENTOR,
-        }),
+    expect(prismaMock.tarefa.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        responsavelId: ID_MENTOR,
+      }),
     });
 
     expect(resultado).toEqual({
@@ -351,261 +268,203 @@ describe('TasksService', () => {
   });
 
   it('não deve permitir que mentor crie tarefa para outro usuário', async () => {
-    prismaMock.tipoAtividade
-      .findUnique
-      .mockResolvedValue({
-        id: ID_TIPO_ATIVIDADE,
-        ativo: true,
-      });
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
 
-    prismaMock.usuario
-      .findUnique
-      .mockResolvedValue({
-        id: ID_OUTRO_MENTOR,
-        ativo: true,
-        papel: Papel.MENTOR,
-      });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_OUTRO_MENTOR,
+      ativo: true,
+      papel: Papel.MENTOR,
+    });
 
     await expect(
       service.criar(
         {
-          tipoAtividadeId:
-            ID_TIPO_ATIVIDADE,
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
 
-          titulo:
-            'Tarefa para outro mentor',
+          projetoId: ID_PROJETO,
 
-          responsavelId:
-            ID_OUTRO_MENTOR,
+          titulo: 'Tarefa para outro mentor',
 
-          escopo:
-            'evento_macro',
+          responsavelId: ID_OUTRO_MENTOR,
 
-          prazoAtual:
-            '2026-08-15T18:00:00-03:00',
+          escopo: 'evento_macro',
+
+          prazoAtual: '2026-08-15T18:00:00-03:00',
         },
         mentor,
       ),
-    ).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(
-      prismaMock.tarefa.create,
-    ).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
   it('deve criar evento macro sem curso e turma', async () => {
-    prismaMock.tipoAtividade
-      .findUnique
-      .mockResolvedValue({
-        id: ID_TIPO_ATIVIDADE,
-        ativo: true,
-      });
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
 
-    prismaMock.usuario
-      .findUnique
-      .mockResolvedValue({
-        id: ID_MENTOR,
-        ativo: true,
-        papel: Papel.MENTOR,
-      });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_MENTOR,
+      ativo: true,
+      papel: Papel.MENTOR,
+    });
 
-    prismaMock.tarefa.create
-      .mockResolvedValue(
-        criarTarefaDetalhe({
-          escopo:
-            EscopoTarefa.EVENTO_MACRO,
-        }),
-      );
-
-    const resultado =
-      await service.criar(
-        {
-          tipoAtividadeId:
-            ID_TIPO_ATIVIDADE,
-
-          titulo:
-            ' Encontro   de mentores ',
-
-          descricao:
-            ' Evento institucional ',
-
-          responsavelId:
-            ID_MENTOR,
-
-          escopo:
-            'evento_macro',
-
-          prazoAtual:
-            '2026-08-15T18:00:00-03:00',
-        },
-        mentor,
-      );
-
-    expect(
-      prismaMock.tarefa.create,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data:
-          expect.objectContaining({
-            titulo:
-              'Encontro de mentores',
-
-            descricao:
-              'Evento institucional',
-
-            criadoPorId:
-              ID_MENTOR,
-
-            responsavelId:
-              ID_MENTOR,
-
-            escopo:
-              EscopoTarefa.EVENTO_MACRO,
-
-            cursoId: null,
-            turmaId: null,
-
-            status:
-              StatusTarefa.PENDENTE,
-
-            concluidoEm: null,
-          }),
+    prismaMock.tarefa.create.mockResolvedValue(
+      criarTarefaDetalhe({
+        escopo: EscopoTarefa.EVENTO_MACRO,
       }),
     );
 
-    expect(
-      prismaMock.curso.findFirst,
-    ).not.toHaveBeenCalled();
+    const resultado = await service.criar(
+      {
+        tipoAtividadeId: ID_TIPO_ATIVIDADE,
 
-    expect(
-      prismaMock.turma.findFirst,
-    ).not.toHaveBeenCalled();
+        projetoId: ID_PROJETO,
 
-    expect(resultado.escopo).toBe(
-      'evento_macro',
+        titulo: ' Encontro   de mentores ',
+
+        descricao: ' Evento institucional ',
+
+        responsavelId: ID_MENTOR,
+
+        escopo: 'evento_macro',
+
+        prazoAtual: '2026-08-15T18:00:00-03:00',
+      },
+      mentor,
     );
 
-    expect(resultado.status).toBe(
-      'pendente',
+    expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          titulo: 'Encontro de mentores',
+
+          descricao: 'Evento institucional',
+
+          criadoPorId: ID_MENTOR,
+
+          responsavelId: ID_MENTOR,
+
+          escopo: EscopoTarefa.EVENTO_MACRO,
+
+          cursoId: null,
+          turmaId: null,
+
+          status: StatusTarefa.PENDENTE,
+
+          concluidoEm: null,
+        }),
+      }),
     );
+
+    expect(prismaMock.curso.findFirst).not.toHaveBeenCalled();
+
+    expect(prismaMock.turma.findFirst).not.toHaveBeenCalled();
+
+    expect(resultado.escopo).toBe('evento_macro');
+
+    expect(resultado.status).toBe('pendente');
   });
 
-  it('deve exigir cursoId para tarefa de escopo curso', async () => {
-    prismaMock.tipoAtividade
-      .findUnique
-      .mockResolvedValue({
-        id: ID_TIPO_ATIVIDADE,
-        ativo: true,
-      });
+  it('deve exigir um projeto válido para criar tarefa', async () => {
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
 
-    prismaMock.usuario
-      .findUnique
-      .mockResolvedValue({
-        id: ID_MENTOR,
-        ativo: true,
-        papel: Papel.MENTOR,
-      });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_MENTOR,
+      ativo: true,
+      papel: Papel.MENTOR,
+    });
+
+    prismaMock.projeto.findFirst.mockResolvedValue(null);
 
     await expect(
       service.criar(
         {
-          tipoAtividadeId:
-            ID_TIPO_ATIVIDADE,
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
 
-          titulo:
-            'Revisar curso',
+          projetoId: ID_PROJETO,
 
-          responsavelId:
-            ID_MENTOR,
+          titulo: 'Revisar curso',
+
+          responsavelId: ID_MENTOR,
 
           escopo: 'curso',
 
-          prazoAtual:
-            '2026-08-15T18:00:00-03:00',
+          prazoAtual: '2026-08-15T18:00:00-03:00',
         },
         mentor,
       ),
-    ).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    ).rejects.toBeInstanceOf(NotFoundException);
 
-    expect(
-      prismaMock.tarefa.create,
-    ).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
   it('deve permitir à coordenadora criar tarefa para mentor vinculado ao curso', async () => {
-    prismaMock.tipoAtividade
-      .findUnique
-      .mockResolvedValue({
-        id: ID_TIPO_ATIVIDADE,
-        ativo: true,
-      });
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
 
-    prismaMock.usuario
-      .findUnique
-      .mockResolvedValue({
-        id: ID_MENTOR,
-        ativo: true,
-        papel: Papel.MENTOR,
-      });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_MENTOR,
+      ativo: true,
+      papel: Papel.MENTOR,
+    });
 
-    prismaMock.curso.findFirst
-      .mockResolvedValue({
-        id: ID_CURSO,
-      });
+    prismaMock.curso.findFirst.mockResolvedValue({
+      id: ID_CURSO,
+    });
 
-    prismaMock.cursoMentor
-      .findFirst
-      .mockResolvedValue({
+    prismaMock.cursoMentor.findFirst.mockResolvedValue({
+      cursoId: ID_CURSO,
+    });
+
+    prismaMock.projeto.findFirst.mockResolvedValue({
+      id: ID_PROJETO,
+      escopo: EscopoTarefa.CURSO,
+      cursoId: ID_CURSO,
+      turmaId: null,
+      prazoFinal: new Date('2026-08-30T21:00:00.000Z'),
+    });
+
+    prismaMock.tarefa.create.mockResolvedValue(
+      criarTarefaDetalhe({
+        escopo: EscopoTarefa.CURSO,
+
         cursoId: ID_CURSO,
-      });
+      }),
+    );
 
-    prismaMock.tarefa.create
-      .mockResolvedValue(
-        criarTarefaDetalhe({
-          escopo:
-            EscopoTarefa.CURSO,
+    const resultado = await service.criar(
+      {
+        tipoAtividadeId: ID_TIPO_ATIVIDADE,
 
-          cursoId:
-            ID_CURSO,
-        }),
-      );
+        projetoId: ID_PROJETO,
 
-    const resultado =
-      await service.criar(
-        {
-          tipoAtividadeId:
-            ID_TIPO_ATIVIDADE,
+        titulo: 'Revisar plano do curso',
 
-          titulo:
-            'Revisar plano do curso',
+        responsavelId: ID_MENTOR,
 
-          responsavelId:
-            ID_MENTOR,
+        escopo: 'curso',
+        cursoId: ID_CURSO,
 
-          escopo: 'curso',
-          cursoId:
-            ID_CURSO,
+        prazoAtual: '2026-08-20T18:00:00-03:00',
+      },
+      coordenadora,
+    );
 
-          prazoAtual:
-            '2026-08-20T18:00:00-03:00',
-        },
-        coordenadora,
-      );
-
-    expect(
-      prismaMock.cursoMentor
-        .findFirst,
-    ).toHaveBeenCalledWith({
+    expect(prismaMock.cursoMentor.findFirst).toHaveBeenCalledWith({
       where: {
-        cursoId:
-          ID_CURSO,
+        cursoId: ID_CURSO,
 
-        mentorId:
-          ID_MENTOR,
+        mentorId: ID_MENTOR,
       },
 
       select: {
@@ -613,194 +472,128 @@ describe('TasksService', () => {
       },
     });
 
-    expect(
-      prismaMock.tarefa.create,
-    ).toHaveBeenCalledWith(
+    expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data:
-          expect.objectContaining({
-            criadoPorId:
-              ID_COORDENADORA,
+        data: expect.objectContaining({
+          criadoPorId: ID_COORDENADORA,
 
-            responsavelId:
-              ID_MENTOR,
+          responsavelId: ID_MENTOR,
 
-            escopo:
-              EscopoTarefa.CURSO,
+          escopo: EscopoTarefa.CURSO,
 
-            cursoId:
-              ID_CURSO,
+          cursoId: ID_CURSO,
 
-            turmaId: null,
-          }),
+          turmaId: null,
+        }),
       }),
     );
 
-    expect(resultado.escopo).toBe(
-      'curso',
-    );
+    expect(resultado.escopo).toBe('curso');
   });
 
   it('não deve permitir reagendamento por usuário sem acesso', async () => {
-    prismaMock.tarefa.findUnique
-      .mockResolvedValue({
-        id: ID_TAREFA,
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
 
-        responsavelId: ID_OUTRO_MENTOR,
+      responsavelId: ID_OUTRO_MENTOR,
 
-        status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.PENDENTE,
 
-        prazoInicio: null,
+      prazoInicio: null,
 
-        prazoAtual: new Date(
-          '2026-08-15T21:00:00.000Z',
-        ),
-      });
+      prazoAtual: new Date('2026-08-15T21:00:00.000Z'),
+    });
 
     await expect(
       service.reagendar(
         ID_TAREFA,
         {
-          prazoNovo:
-            '2026-08-20T18:00:00-03:00',
+          prazoNovo: '2026-08-20T18:00:00-03:00',
 
-          justificativa:
-            'Nova necessidade',
+          justificativa: 'Nova necessidade',
         },
         mentor,
       ),
-    ).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    ).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(
-      prismaMock.tarefa.update,
-    ).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
   });
 
   it('não deve permitir reagendar tarefa concluída', async () => {
-    prismaMock.tarefa.findUnique
-      .mockResolvedValue({
-        id: ID_TAREFA,
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
 
-        responsavelId:
-          ID_MENTOR,
+      responsavelId: ID_MENTOR,
 
-        status:
-          StatusTarefa.CONCLUIDA,
+      status: StatusTarefa.CONCLUIDA,
 
-        prazoInicio: null,
+      prazoInicio: null,
 
-        prazoAtual: new Date(
-          '2026-08-15T21:00:00.000Z',
-        ),
-      });
+      prazoAtual: new Date('2026-08-15T21:00:00.000Z'),
+    });
 
     await expect(
       service.reagendar(
         ID_TAREFA,
         {
-          prazoNovo:
-            '2026-08-20T18:00:00-03:00',
+          prazoNovo: '2026-08-20T18:00:00-03:00',
         },
         mentor,
       ),
-    ).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(
-      prismaMock.tarefa.update,
-    ).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
   });
 
   it('deve concluir uma tarefa pendente', async () => {
-    const tarefaPendente =
-      criarTarefaDetalhe({
-        status:
-          StatusTarefa.PENDENTE,
+    const tarefaPendente = criarTarefaDetalhe({
+      status: StatusTarefa.PENDENTE,
 
-        concluidoEm: null,
-      });
+      concluidoEm: null,
+    });
 
-    const tarefaConcluida =
-      criarTarefaDetalhe({
-        status:
-          StatusTarefa.CONCLUIDA,
+    const tarefaConcluida = criarTarefaDetalhe({
+      status: StatusTarefa.CONCLUIDA,
 
-        concluidoEm:
-          new Date(
-            '2026-08-10T15:00:00.000Z',
-          ),
-      });
+      concluidoEm: new Date('2026-08-10T15:00:00.000Z'),
+    });
 
-    prismaMock.tarefa.findUnique
-      .mockResolvedValue(
-        tarefaPendente,
-      );
+    prismaMock.tarefa.findUnique.mockResolvedValue(tarefaPendente);
 
-    prismaMock.tarefa.update
-      .mockResolvedValue(
-        tarefaConcluida,
-      );
+    prismaMock.tarefa.update.mockResolvedValue(tarefaConcluida);
 
-    const resultado =
-      await service.concluir(
-        ID_TAREFA,
-        mentor,
-      );
+    const resultado = await service.concluir(ID_TAREFA, mentor);
 
-    expect(
-      prismaMock.tarefa.update,
-    ).toHaveBeenCalledWith(
+    expect(prismaMock.tarefa.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           id: ID_TAREFA,
         },
 
         data: {
-          status:
-            StatusTarefa.CONCLUIDA,
+          status: StatusTarefa.CONCLUIDA,
 
-          concluidoEm:
-            expect.any(Date),
+          concluidoEm: expect.any(Date),
         },
       }),
     );
 
-    expect(resultado.status).toBe(
-      'concluida',
-    );
+    expect(resultado.status).toBe('concluida');
 
-    expect(
-      resultado.concluidoEm,
-    ).not.toBeNull();
+    expect(resultado.concluidoEm).not.toBeNull();
   });
 
   it('deve tratar conclusão repetida de forma idempotente', async () => {
-    const tarefaConcluida =
-      criarTarefaDetalhe({
-        status:
-          StatusTarefa.CONCLUIDA,
-      });
+    const tarefaConcluida = criarTarefaDetalhe({
+      status: StatusTarefa.CONCLUIDA,
+    });
 
-    prismaMock.tarefa.findUnique
-      .mockResolvedValue(
-        tarefaConcluida,
-      );
+    prismaMock.tarefa.findUnique.mockResolvedValue(tarefaConcluida);
 
-    const resultado =
-      await service.concluir(
-        ID_TAREFA,
-        mentor,
-      );
+    const resultado = await service.concluir(ID_TAREFA, mentor);
 
-    expect(
-      prismaMock.tarefa.update,
-    ).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
 
-    expect(resultado.status).toBe(
-      'concluida',
-    );
+    expect(resultado.status).toBe('concluida');
   });
 });

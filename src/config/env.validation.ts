@@ -47,25 +47,6 @@ export const envValidationSchema = Joi.object({
     .max(100)
     .required(),
 
-  GOOGLE_CLIENT_ID: Joi.string().required(),
-
-  GOOGLE_CLIENT_SECRET: Joi.string().required(),
-
-  GOOGLE_REDIRECT_URI: Joi.string()
-    .uri()
-    .required(),
-
-  GOOGLE_OAUTH_STATE_SECRET: Joi.string()
-    .min(64)
-    .required(),
-
-  DRIVE_TOKEN_ENCRYPTION_KEY: Joi.string()
-    .base64()
-    .required(),
-
-  GOOGLE_DRIVE_FOLDER_ID: Joi.string()
-    .allow('')
-    .optional(),
   SWAGGER_ENABLED:
     Joi.boolean()
     .default(false),

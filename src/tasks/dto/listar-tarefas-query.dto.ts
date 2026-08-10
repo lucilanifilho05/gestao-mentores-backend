@@ -1,30 +1,17 @@
-import {
-  Transform,
-  Type,
-} from 'class-transformer';
-import {
-  IsIn,
-  IsInt,
-  IsOptional,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
-import {
-  ESCOPOS_TAREFA,
-  type EscopoTarefaEntrada,
-} from './criar-tarefa.dto';
+import { ESCOPOS_TAREFA, type EscopoTarefaEntrada } from './criar-tarefa.dto';
 
-export const STATUS_TAREFA = [
-  'pendente',
-  'concluida',
-] as const;
+export const STATUS_TAREFA = ['pendente', 'concluida'] as const;
 
-export type StatusTarefaEntrada =
-  (typeof STATUS_TAREFA)[number];
+export type StatusTarefaEntrada = (typeof STATUS_TAREFA)[number];
 
 export class ListarTarefasQueryDto {
+  @IsOptional()
+  @IsUUID('4')
+  projetoId?: string;
+
   @IsOptional()
   @IsUUID('4')
   responsavelId?: string;
@@ -39,25 +26,19 @@ export class ListarTarefasQueryDto {
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string'
-      ? value.trim().toLowerCase()
-      : value,
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   @IsIn([...STATUS_TAREFA], {
-    message:
-      'status deve ser pendente ou concluida.',
+    message: 'status deve ser pendente ou concluida.',
   })
   status?: StatusTarefaEntrada;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string'
-      ? value.trim().toLowerCase()
-      : value,
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   @IsIn([...ESCOPOS_TAREFA], {
-    message:
-      'escopo deve ser curso, turma ou evento_macro.',
+    message: 'escopo deve ser curso, turma ou evento_macro.',
   })
   escopo?: EscopoTarefaEntrada;
 
