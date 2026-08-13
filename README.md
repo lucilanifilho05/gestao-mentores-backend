@@ -157,6 +157,7 @@ Exemplo:
 ```dotenv
 NODE_ENV=development
 PORT=3000
+CORS_ORIGINS="http://localhost:5173"
 
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/gestao_mentores?schema=public"
 
@@ -169,6 +170,9 @@ JWT_REFRESH_EXPIRES_IN="7d"
 SWAGGER_ENABLED=true
 
 ```
+
+Em produção, configure `CORS_ORIGINS=https://jusana.space`. Mais de uma origem
+pode ser informada separando os endereços por vírgula, sem utilizar curingas.
 
 ---
 

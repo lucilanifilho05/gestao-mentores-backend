@@ -13,12 +13,17 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  const configService = app.get(ConfigService);
+  const corsOrigins = configService
+    .getOrThrow<string>('CORS_ORIGINS')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: corsOrigins,
     credentials: true,
   });
-
-  const configService = app.get(ConfigService);
 
   app.use(cookieParser());
 
