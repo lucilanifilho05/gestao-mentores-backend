@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -43,6 +43,9 @@
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
+    "@emnapi/core": "2.0.0-alpha.4",
+    "@emnapi/runtime": "2.0.0-alpha.4",
+    "@emnapi/wasi-threads": "2.0.1",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
