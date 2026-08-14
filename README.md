@@ -529,6 +529,60 @@ npm run start:prod
 
 ---
 
+## Atualização na VPS
+
+O backend está instalado em `/opt/gestao-mentores/backend`. O arquivo `.env`
+de produção deve permanecer somente na VPS e não deve ser versionado.
+
+### 1. Acessar o projeto e baixar a nova versão
+
+```bash
+cd /opt/gestao-mentores/backend
+git status
+git pull --ff-only origin main
+```
+
+Se `git status` apresentar alterações locais, revise-as antes de executar o
+`git pull`. Não apague nem substitua o arquivo `.env`.
+
+### 2. Reconstruir e atualizar os containers
+
+```bash
+docker compose up -d --build
+```
+
+O Compose aguarda o PostgreSQL ficar saudável, executa automaticamente
+`prisma migrate deploy` no serviço `migrate` e somente então inicia a API. O
+serviço `migrate` terminar com código `0` é o comportamento esperado.
+
+### 3. Validar a atualização
+
+```bash
+docker compose ps -a
+docker compose logs --tail=100 migrate
+docker compose logs --tail=100 backend
+curl --fail http://127.0.0.1:3000/health
+```
+
+Também valide o endereço público:
+
+```text
+https://api.jusana.space/health
+```
+
+### 4. Diagnóstico
+
+Para acompanhar os logs da API em tempo real:
+
+```bash
+docker compose logs -f backend
+```
+
+Não execute `docker compose down -v` em produção, pois a opção `-v` remove o
+volume persistente do PostgreSQL e pode causar perda de dados.
+
+---
+
 ## Licença
 
 Projeto desenvolvido para fins acadêmicos e de demonstração.

@@ -141,6 +141,7 @@ const prismaMock = {
 
   usuario: {
     findUnique: criarMockAssincrono(),
+    findMany: criarMockAssincrono(),
   },
 
   curso: {
@@ -301,23 +302,22 @@ describe('TasksService', () => {
     expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
-  it('deve criar evento macro sem curso e turma', async () => {
+  it('deve criar uma tarefa macro para cada mentor ativo', async () => {
     prismaMock.tipoAtividade.findUnique.mockResolvedValue({
       id: ID_TIPO_ATIVIDADE,
       ativo: true,
     });
 
-    prismaMock.usuario.findUnique.mockResolvedValue({
-      id: ID_MENTOR,
-      ativo: true,
-      papel: Papel.MENTOR,
-    });
+    prismaMock.usuario.findMany.mockResolvedValue([
+      { id: ID_MENTOR },
+      { id: ID_OUTRO_MENTOR },
+    ]);
 
-    prismaMock.tarefa.create.mockResolvedValue(
-      criarTarefaDetalhe({
-        escopo: EscopoTarefa.EVENTO_MACRO,
-      }),
-    );
+    prismaMock.tarefa.create
+      .mockResolvedValueOnce(criarTarefaDetalhe())
+      .mockResolvedValueOnce(
+        criarTarefaDetalhe({ responsavelId: ID_OUTRO_MENTOR }),
+      );
 
     const resultado = await service.criar(
       {
@@ -329,15 +329,14 @@ describe('TasksService', () => {
 
         descricao: ' Evento institucional ',
 
-        responsavelId: ID_MENTOR,
-
         escopo: 'evento_macro',
 
         prazoAtual: '2026-08-15T18:00:00-03:00',
       },
-      mentor,
+      coordenadora,
     );
 
+    expect(prismaMock.tarefa.create).toHaveBeenCalledTimes(2);
     expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -345,9 +344,7 @@ describe('TasksService', () => {
 
           descricao: 'Evento institucional',
 
-          criadoPorId: ID_MENTOR,
-
-          responsavelId: ID_MENTOR,
+          criadoPorId: ID_COORDENADORA,
 
           escopo: EscopoTarefa.EVENTO_MACRO,
 
@@ -365,9 +362,8 @@ describe('TasksService', () => {
 
     expect(prismaMock.turma.findFirst).not.toHaveBeenCalled();
 
-    expect(resultado.escopo).toBe('evento_macro');
-
-    expect(resultado.status).toBe('pendente');
+    expect(resultado.quantidadeCriada).toBe(2);
+    expect(resultado.tarefas).toHaveLength(2);
   });
 
   it('deve exigir um projeto válido para criar tarefa', async () => {

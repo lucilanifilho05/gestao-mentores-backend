@@ -269,6 +269,18 @@ export class TasksService {
       throw new BadRequestException('O tipo de atividade está inativo.');
     }
 
+    const escopo = this.converterEscopo(dto.escopo);
+
+    if (escopo === EscopoTarefa.EVENTO_MACRO) {
+      return this.criarParaTodosOsMentores(dto, usuario, prazoInicio, prazoAtual);
+    }
+
+    if (!dto.responsavelId) {
+      throw new BadRequestException(
+        'responsavelId é obrigatório para tarefas de escopo curso ou turma.',
+      );
+    }
+
     const responsavel = await this.prisma.usuario.findUnique({
       where: {
         id: dto.responsavelId,
@@ -333,7 +345,6 @@ export class TasksService {
       );
     }
 
-    const escopo = this.converterEscopo(dto.escopo);
     const referencias = await this.validarEscopo(escopo, dto, usuario);
 
     /*
@@ -380,6 +391,100 @@ export class TasksService {
     });
 
     return this.formatarDetalhe(tarefa);
+  }
+
+  private async criarParaTodosOsMentores(
+    dto: CriarTarefaDto,
+    usuario: UsuarioAutenticado,
+    prazoInicio: Date | null,
+    prazoAtual: Date,
+  ) {
+    if (usuario.papel !== Papel.COORDENADORA) {
+      throw new ForbiddenException(
+        'Somente a coordenadora pode criar tarefas para todos os mentores.',
+      );
+    }
+
+    if (dto.responsavelId) {
+      throw new BadRequestException(
+        'responsavelId não deve ser informado para tarefas de evento_macro.',
+      );
+    }
+
+    await this.validarEscopo(EscopoTarefa.EVENTO_MACRO, dto, usuario);
+
+    const projeto = await this.prisma.projeto.findFirst({
+      where: {
+        id: dto.projetoId,
+        status: {
+          in: [StatusProjeto.PLANEJAMENTO, StatusProjeto.EM_ANDAMENTO],
+        },
+      },
+      select: { id: true, prazoFinal: true },
+    });
+
+    if (!projeto) {
+      throw new NotFoundException(
+        'Projeto não encontrado, encerrado ou não acessível.',
+      );
+    }
+
+    if (prazoAtual > projeto.prazoFinal) {
+      throw new BadRequestException(
+        'O prazo da tarefa não pode ultrapassar o prazo final do projeto.',
+      );
+    }
+
+    const mentores = await this.prisma.usuario.findMany({
+      where: { papel: Papel.MENTOR, ativo: true },
+      select: { id: true },
+      orderBy: { nome: 'asc' },
+    });
+
+    if (mentores.length === 0) {
+      throw new BadRequestException(
+        'Não há mentores ativos para receber a tarefa macro.',
+      );
+    }
+
+    const tarefas = await this.prisma.$transaction(async (transaction) => {
+      const criadas = await Promise.all(
+        mentores.map((mentor) =>
+          transaction.tarefa.create({
+            data: {
+              projetoId: projeto.id,
+              tipoAtividadeId: dto.tipoAtividadeId,
+              titulo: dto.titulo.trim().replace(/\s+/g, ' '),
+              descricao: dto.descricao?.trim() || null,
+              criadoPorId: usuario.id,
+              responsavelId: mentor.id,
+              escopo: EscopoTarefa.EVENTO_MACRO,
+              cursoId: null,
+              turmaId: null,
+              prazoInicio,
+              prazoAtual,
+              status: StatusTarefa.PENDENTE,
+              concluidoEm: null,
+              links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
+            },
+            select: tarefaDetalheSelect,
+          }),
+        ),
+      );
+
+      await transaction.projeto.updateMany({
+        where: { id: projeto.id, status: StatusProjeto.PLANEJAMENTO },
+        data: { status: StatusProjeto.EM_ANDAMENTO },
+      });
+
+      return criadas;
+    });
+
+    return {
+      quantidadeCriada: tarefas.length,
+      titulo: dto.titulo.trim().replace(/\s+/g, ' '),
+      tarefas: tarefas.map((tarefa) => this.formatarDetalhe(tarefa)),
+    };
   }
 
   async reagendar(

@@ -44,10 +44,11 @@ export class CriarTarefaDto {
   @MaxLength(5000)
   descricao?: string;
 
+  @IsOptional()
   @IsUUID('4', {
     message: 'responsavelId deve ser um UUID válido.',
   })
-  responsavelId!: string;
+  responsavelId?: string;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
