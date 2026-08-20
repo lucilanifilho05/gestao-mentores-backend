@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import {
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { UsuarioAtual } from '../common/decorators/usuario-atual.decorator';
 import { CriarTarefaDto } from './dto/criar-tarefa.dto';
+import { AtualizarTarefaDto } from './dto/atualizar-tarefa.dto';
 import { ListarTarefasQueryDto } from './dto/listar-tarefas-query.dto';
 import { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
 import { TasksService } from './tasks.service';
@@ -75,6 +77,15 @@ export class TasksController {
       tarefaId,
       usuario,
     );
+  }
+
+  @Patch(':tarefaId')
+  atualizar(
+    @Param('tarefaId', new ParseUUIDPipe({ version: '4' })) tarefaId: string,
+    @Body() dto: AtualizarTarefaDto,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.tasksService.atualizar(tarefaId, dto, usuario);
   }
 
   @Post(':tarefaId/reagendar')

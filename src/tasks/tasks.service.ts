@@ -24,6 +24,7 @@ import type {
   StatusTarefaEntrada,
 } from './dto/listar-tarefas-query.dto';
 import type { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
+import type { AtualizarTarefaDto } from './dto/atualizar-tarefa.dto';
 
 const tarefaResumoSelect = {
   id: true,
@@ -507,6 +508,82 @@ export class TasksService {
       titulo: dto.titulo.trim().replace(/\s+/g, ' '),
       tarefas: tarefas.map((tarefa) => this.formatarDetalhe(tarefa)),
     };
+  }
+
+  async atualizar(
+    tarefaId: string,
+    dto: AtualizarTarefaDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    const tarefa = await this.prisma.tarefa.findUnique({
+      where: { id: tarefaId },
+      select: {
+        id: true,
+        responsavelId: true,
+        tipoAtividadeId: true,
+        status: true,
+      },
+    });
+
+    if (!tarefa) {
+      throw new NotFoundException('Tarefa não encontrada.');
+    }
+
+    const podeEditar =
+      usuario.papel === Papel.COORDENADORA ||
+      tarefa.responsavelId === usuario.id;
+
+    if (!podeEditar) {
+      throw new ForbiddenException(
+        'Só o responsável pela tarefa ou a coordenadora pode editá-la.',
+      );
+    }
+
+    if (tarefa.status === StatusTarefa.CONCLUIDA) {
+      throw new ConflictException('Uma tarefa concluída não pode ser editada.');
+    }
+
+    if (dto.tipoAtividadeId !== tarefa.tipoAtividadeId) {
+      const tipoAtividade = await this.prisma.tipoAtividade.findUnique({
+        where: { id: dto.tipoAtividadeId },
+        select: { id: true, ativo: true },
+      });
+
+      if (!tipoAtividade) {
+        throw new NotFoundException('Tipo de atividade não encontrado.');
+      }
+
+      if (!tipoAtividade.ativo) {
+        throw new BadRequestException('O tipo de atividade está inativo.');
+      }
+    }
+
+    try {
+      const atualizada = await this.prisma.tarefa.update({
+        where: { id: tarefa.id, status: StatusTarefa.PENDENTE },
+        data: {
+          tipoAtividadeId: dto.tipoAtividadeId,
+          titulo: dto.titulo.trim().replace(/\s+/g, ' '),
+          descricao: dto.descricao?.trim() || null,
+          links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
+        },
+        select: tarefaDetalheSelect,
+      });
+
+      return this.formatarDetalhe(atualizada);
+    } catch (erro: unknown) {
+      if (
+        typeof erro === 'object' &&
+        erro !== null &&
+        'code' in erro &&
+        (erro as { code?: unknown }).code === 'P2025'
+      ) {
+        throw new ConflictException(
+          'A tarefa foi concluída enquanto estava sendo editada.',
+        );
+      }
+      throw erro;
+    }
   }
 
   async reagendar(

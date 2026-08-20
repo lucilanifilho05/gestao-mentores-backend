@@ -521,6 +521,84 @@ describe('TasksService', () => {
     expect(resultado.escopo).toBe('curso');
   });
 
+  it('deve permitir que o responsável edite conteúdo e links da tarefa', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      responsavelId: ID_MENTOR,
+      tipoAtividadeId: ID_TIPO_ATIVIDADE,
+      status: StatusTarefa.PENDENTE,
+    });
+    prismaMock.tarefa.update.mockResolvedValue(
+      criarTarefaDetalhe({ responsavelId: ID_MENTOR }),
+    );
+
+    await service.atualizar(
+      ID_TAREFA,
+      {
+        tipoAtividadeId: ID_TIPO_ATIVIDADE,
+        titulo: ' Relatório   final ',
+        descricao: ' Evidências ',
+        links: ['https://exemplo.com/arquivo', 'https://exemplo.com/arquivo'],
+      },
+      mentor,
+    );
+
+    expect(prismaMock.tarefa.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ID_TAREFA, status: StatusTarefa.PENDENTE },
+        data: expect.objectContaining({
+          titulo: 'Relatório final',
+          descricao: 'Evidências',
+          links: ['https://exemplo.com/arquivo'],
+        }),
+      }),
+    );
+  });
+
+  it('não deve permitir editar tarefa concluída', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      responsavelId: ID_MENTOR,
+      tipoAtividadeId: ID_TIPO_ATIVIDADE,
+      status: StatusTarefa.CONCLUIDA,
+    });
+
+    await expect(
+      service.atualizar(
+        ID_TAREFA,
+        {
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
+          titulo: 'Tarefa concluída',
+          links: [],
+        },
+        mentor,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
+  });
+
+  it('não deve permitir edição por usuário sem acesso', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      responsavelId: ID_OUTRO_MENTOR,
+      tipoAtividadeId: ID_TIPO_ATIVIDADE,
+      status: StatusTarefa.PENDENTE,
+    });
+
+    await expect(
+      service.atualizar(
+        ID_TAREFA,
+        {
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
+          titulo: 'Tentativa de edição',
+          links: [],
+        },
+        mentor,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('não deve permitir reagendamento por usuário sem acesso', async () => {
     prismaMock.tarefa.findUnique.mockResolvedValue({
       id: ID_TAREFA,
