@@ -101,6 +101,7 @@ export class AcademicService {
             _count: {
               select: {
                 modulos: true,
+                tarefas: true,
               },
             },
           },
@@ -121,6 +122,8 @@ export class AcademicService {
         curso: turma.curso,
         quantidadeModulos:
           turma._count.modulos,
+        quantidadeTarefas:
+          turma._count.tarefas,
         criadoEm: turma.criadoEm,
         atualizadoEm: turma.atualizadoEm,
       })),
@@ -230,12 +233,16 @@ export class AcademicService {
       where: { id: turmaId },
       select: {
         id: true,
+        cursoId: true,
         modulos: {
           select: {
             nome: true,
             dataInicio: true,
             dataFim: true,
           },
+        },
+        _count: {
+          select: { tarefas: true },
         },
       },
     });
@@ -244,6 +251,31 @@ export class AcademicService {
       throw new NotFoundException(
         'Turma não encontrada.',
       );
+    }
+
+    const alterandoCurso = dto.cursoId !== turma.cursoId;
+
+    if (alterandoCurso && turma._count.tarefas > 0) {
+      throw new ConflictException(
+        'Não é possível alterar o curso de uma turma com tarefas vinculadas.',
+      );
+    }
+
+    if (alterandoCurso) {
+      const cursoDestino = await this.prisma.curso.findUnique({
+        where: { id: dto.cursoId },
+        select: { id: true, ativo: true },
+      });
+
+      if (!cursoDestino) {
+        throw new NotFoundException('Curso de destino não encontrado.');
+      }
+
+      if (!cursoDestino.ativo) {
+        throw new BadRequestException(
+          'Não é possível transferir a turma para um curso inativo.',
+        );
+      }
     }
 
     for (const modulo of turma.modulos) {
@@ -259,8 +291,12 @@ export class AcademicService {
 
     try {
       return await this.prisma.turma.update({
-        where: { id: turmaId },
+        where: {
+          id: turmaId,
+          ...(alterandoCurso ? { tarefas: { none: {} } } : {}),
+        },
         data: {
+          cursoId: dto.cursoId,
           codigo: dto.codigo.trim(),
           dataInicio,
           dataFim,
@@ -282,6 +318,12 @@ export class AcademicService {
       if (this.ehErroUniqueConstraint(erro)) {
         throw new ConflictException(
           'Já existe uma turma com esse código no curso.',
+        );
+      }
+
+      if (alterandoCurso && this.ehRegistroNaoEncontrado(erro)) {
+        throw new ConflictException(
+          'Não é possível alterar o curso porque a turma recebeu tarefas vinculadas.',
         );
       }
 
@@ -877,6 +919,17 @@ export class AcademicService {
       'code' in erro &&
       (erro as { code?: unknown }).code ===
         'P2002'
+    );
+  }
+
+  private ehRegistroNaoEncontrado(
+    erro: unknown,
+  ): erro is { code: 'P2025' } {
+    return (
+      typeof erro === 'object' &&
+      erro !== null &&
+      'code' in erro &&
+      (erro as { code?: unknown }).code === 'P2025'
     );
   }
 }

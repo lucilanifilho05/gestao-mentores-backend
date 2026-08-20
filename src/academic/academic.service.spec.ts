@@ -11,6 +11,8 @@ const TURMA_ID =
   '11111111-1111-4111-8111-111111111111';
 const CURSO_ID =
   '22222222-2222-4222-8222-222222222222';
+const OUTRO_CURSO_ID =
+  '44444444-4444-4444-8444-444444444444';
 
 const criarMockAssincrono = () =>
   jest.fn<
@@ -24,6 +26,9 @@ const prismaMock = {
     findMany: criarMockAssincrono(),
     count: criarMockAssincrono(),
     update: criarMockAssincrono(),
+  },
+  curso: {
+    findUnique: criarMockAssincrono(),
   },
   $transaction: jest.fn(),
 };
@@ -56,11 +61,14 @@ describe('AcademicService - turmas', () => {
   it('deve atualizar código e período da turma', async () => {
     prismaMock.turma.findUnique.mockResolvedValue({
       id: TURMA_ID,
+      cursoId: CURSO_ID,
       modulos: [],
+      _count: { tarefas: 0 },
     });
     prismaMock.turma.update.mockResolvedValue(turma);
 
     await service.atualizarTurma(TURMA_ID, {
+      cursoId: CURSO_ID,
       codigo: ' TURMA-02 ',
       dataInicio: '2026-02-01',
       dataFim: '2026-11-30',
@@ -70,6 +78,7 @@ describe('AcademicService - turmas', () => {
       expect.objectContaining({
         where: { id: TURMA_ID },
         data: {
+          cursoId: CURSO_ID,
           codigo: 'TURMA-02',
           dataInicio: new Date('2026-02-01T00:00:00.000Z'),
           dataFim: new Date('2026-11-30T00:00:00.000Z'),
@@ -81,14 +90,17 @@ describe('AcademicService - turmas', () => {
   it('deve impedir período que deixe módulo fora da turma', async () => {
     prismaMock.turma.findUnique.mockResolvedValue({
       id: TURMA_ID,
+      cursoId: CURSO_ID,
       modulos: [{
         nome: 'Módulo 1',
         dataInicio: new Date('2026-01-10T00:00:00.000Z'),
         dataFim: new Date('2026-03-31T00:00:00.000Z'),
       }],
+      _count: { tarefas: 0 },
     });
 
     await expect(service.atualizarTurma(TURMA_ID, {
+      cursoId: CURSO_ID,
       codigo: 'TURMA-01',
       dataInicio: '2026-02-01',
       dataFim: '2026-12-31',
@@ -101,6 +113,7 @@ describe('AcademicService - turmas', () => {
     prismaMock.turma.findUnique.mockResolvedValue(null);
 
     await expect(service.atualizarTurma(TURMA_ID, {
+      cursoId: CURSO_ID,
       codigo: 'TURMA-01',
       dataInicio: '2026-01-01',
       dataFim: '2026-12-31',
@@ -110,15 +123,67 @@ describe('AcademicService - turmas', () => {
   it('deve traduzir código duplicado em conflito', async () => {
     prismaMock.turma.findUnique.mockResolvedValue({
       id: TURMA_ID,
+      cursoId: CURSO_ID,
       modulos: [],
+      _count: { tarefas: 0 },
     });
     prismaMock.turma.update.mockRejectedValue({ code: 'P2002' });
 
     await expect(service.atualizarTurma(TURMA_ID, {
+      cursoId: CURSO_ID,
       codigo: 'DUPLICADA',
       dataInicio: '2026-01-01',
       dataFim: '2026-12-31',
     })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('deve alterar o curso quando a turma não possui tarefas', async () => {
+    prismaMock.turma.findUnique.mockResolvedValue({
+      id: TURMA_ID,
+      cursoId: CURSO_ID,
+      modulos: [],
+      _count: { tarefas: 0 },
+    });
+    prismaMock.curso.findUnique.mockResolvedValue({
+      id: OUTRO_CURSO_ID,
+      ativo: true,
+    });
+    prismaMock.turma.update.mockResolvedValue({
+      ...turma,
+      curso: { id: OUTRO_CURSO_ID, nome: 'Outro curso', ativo: true },
+    });
+
+    await service.atualizarTurma(TURMA_ID, {
+      cursoId: OUTRO_CURSO_ID,
+      codigo: 'TURMA-01',
+      dataInicio: '2026-01-01',
+      dataFim: '2026-12-31',
+    });
+
+    expect(prismaMock.turma.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: TURMA_ID, tarefas: { none: {} } },
+        data: expect.objectContaining({ cursoId: OUTRO_CURSO_ID }),
+      }),
+    );
+  });
+
+  it('deve impedir alteração de curso quando a turma possui tarefas', async () => {
+    prismaMock.turma.findUnique.mockResolvedValue({
+      id: TURMA_ID,
+      cursoId: CURSO_ID,
+      modulos: [],
+      _count: { tarefas: 1 },
+    });
+
+    await expect(service.atualizarTurma(TURMA_ID, {
+      cursoId: OUTRO_CURSO_ID,
+      codigo: 'TURMA-01',
+      dataInicio: '2026-01-01',
+      dataFim: '2026-12-31',
+    })).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prismaMock.turma.update).not.toHaveBeenCalled();
   });
 
   it('deve alterar o status da turma', async () => {
