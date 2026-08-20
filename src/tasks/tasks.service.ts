@@ -272,7 +272,18 @@ export class TasksService {
     const escopo = this.converterEscopo(dto.escopo);
 
     if (escopo === EscopoTarefa.EVENTO_MACRO) {
-      return this.criarParaTodosOsMentores(dto, usuario, prazoInicio, prazoAtual);
+      return this.criarParaMentoresSelecionados(
+        dto,
+        usuario,
+        prazoInicio,
+        prazoAtual,
+      );
+    }
+
+    if (dto.responsavelIds?.length) {
+      throw new BadRequestException(
+        'responsavelIds deve ser informado somente para tarefas de evento_macro.',
+      );
     }
 
     if (!dto.responsavelId) {
@@ -393,7 +404,7 @@ export class TasksService {
     return this.formatarDetalhe(tarefa);
   }
 
-  private async criarParaTodosOsMentores(
+  private async criarParaMentoresSelecionados(
     dto: CriarTarefaDto,
     usuario: UsuarioAutenticado,
     prazoInicio: Date | null,
@@ -408,6 +419,14 @@ export class TasksService {
     if (dto.responsavelId) {
       throw new BadRequestException(
         'responsavelId não deve ser informado para tarefas de evento_macro.',
+      );
+    }
+
+    const responsavelIds = [...new Set(dto.responsavelIds ?? [])];
+
+    if (responsavelIds.length === 0) {
+      throw new BadRequestException(
+        'Selecione pelo menos um mentor para a tarefa de evento macro.',
       );
     }
 
@@ -436,20 +455,23 @@ export class TasksService {
     }
 
     const mentores = await this.prisma.usuario.findMany({
-      where: { papel: Papel.MENTOR, ativo: true },
+      where: {
+        id: { in: responsavelIds },
+        papel: Papel.MENTOR,
+        ativo: true,
+      },
       select: { id: true },
-      orderBy: { nome: 'asc' },
     });
 
-    if (mentores.length === 0) {
+    if (mentores.length !== responsavelIds.length) {
       throw new BadRequestException(
-        'Não há mentores ativos para receber a tarefa macro.',
+        'Um ou mais responsáveis não existem, estão inativos ou não são mentores.',
       );
     }
 
     const tarefas = await this.prisma.$transaction(async (transaction) => {
       const criadas = await Promise.all(
-        mentores.map((mentor) =>
+        responsavelIds.map((responsavelId) =>
           transaction.tarefa.create({
             data: {
               projetoId: projeto.id,
@@ -457,7 +479,7 @@ export class TasksService {
               titulo: dto.titulo.trim().replace(/\s+/g, ' '),
               descricao: dto.descricao?.trim() || null,
               criadoPorId: usuario.id,
-              responsavelId: mentor.id,
+              responsavelId,
               escopo: EscopoTarefa.EVENTO_MACRO,
               cursoId: null,
               turmaId: null,

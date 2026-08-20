@@ -1,6 +1,8 @@
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsDateString,
   IsIn,
@@ -49,6 +51,17 @@ export class CriarTarefaDto {
     message: 'responsavelId deve ser um UUID válido.',
   })
   responsavelId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Selecione pelo menos um mentor.' })
+  @ArrayMaxSize(100, { message: 'Selecione no máximo 100 mentores.' })
+  @ArrayUnique({ message: 'A lista de responsáveis não deve conter duplicados.' })
+  @IsUUID('4', {
+    each: true,
+    message: 'Cada responsável deve possuir um UUID válido.',
+  })
+  responsavelIds?: string[];
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>

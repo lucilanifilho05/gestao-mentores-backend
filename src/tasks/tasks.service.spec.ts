@@ -331,12 +331,22 @@ describe('TasksService', () => {
 
         escopo: 'evento_macro',
 
+        responsavelIds: [ID_MENTOR, ID_OUTRO_MENTOR],
+
         prazoAtual: '2026-08-15T18:00:00-03:00',
       },
       coordenadora,
     );
 
     expect(prismaMock.tarefa.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [ID_MENTOR, ID_OUTRO_MENTOR] },
+        papel: Papel.MENTOR,
+        ativo: true,
+      },
+      select: { id: true },
+    });
     expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -364,6 +374,30 @@ describe('TasksService', () => {
 
     expect(resultado.quantidadeCriada).toBe(2);
     expect(resultado.tarefas).toHaveLength(2);
+  });
+
+  it('deve rejeitar evento macro quando algum mentor selecionado for inválido', async () => {
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
+    prismaMock.usuario.findMany.mockResolvedValue([{ id: ID_MENTOR }]);
+
+    await expect(
+      service.criar(
+        {
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
+          projetoId: ID_PROJETO,
+          titulo: 'Evento para mentores selecionados',
+          escopo: 'evento_macro',
+          responsavelIds: [ID_MENTOR, ID_OUTRO_MENTOR],
+          prazoAtual: '2026-08-15T18:00:00-03:00',
+        },
+        coordenadora,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
   it('deve exigir um projeto válido para criar tarefa', async () => {
