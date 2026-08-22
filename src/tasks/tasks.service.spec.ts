@@ -521,6 +521,45 @@ describe('TasksService', () => {
     expect(resultado.escopo).toBe('curso');
   });
 
+  it('deve atribuir automaticamente ao mentor autenticado', async () => {
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_MENTOR,
+      ativo: true,
+      papel: Papel.MENTOR,
+    });
+    prismaMock.curso.findFirst.mockResolvedValue({ id: ID_CURSO });
+    prismaMock.cursoMentor.findFirst.mockResolvedValue({ cursoId: ID_CURSO });
+    prismaMock.tarefa.create.mockResolvedValue(
+      criarTarefaDetalhe({ escopo: EscopoTarefa.CURSO, cursoId: ID_CURSO }),
+    );
+
+    await service.criar(
+      {
+        tipoAtividadeId: ID_TIPO_ATIVIDADE,
+        projetoId: ID_PROJETO,
+        titulo: 'Minha tarefa',
+        responsavelId: ID_OUTRO_MENTOR,
+        escopo: 'curso',
+        cursoId: ID_CURSO,
+        prazoAtual: '2026-08-20T18:00:00-03:00',
+      },
+      mentor,
+    );
+
+    expect(prismaMock.usuario.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: ID_MENTOR } }),
+    );
+    expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ responsavelId: ID_MENTOR }),
+      }),
+    );
+  });
+
   it('deve permitir que o responsável edite conteúdo e links da tarefa', async () => {
     prismaMock.tarefa.findUnique.mockResolvedValue({
       id: ID_TAREFA,

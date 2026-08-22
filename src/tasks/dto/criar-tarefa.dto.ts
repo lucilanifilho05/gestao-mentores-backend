@@ -43,7 +43,9 @@ export class CriarTarefaDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MaxLength(5000)
+  @MaxLength(50000, {
+    message: 'A descriÃ§Ã£o formatada deve ter no mÃ¡ximo 50.000 caracteres.',
+  })
   descricao?: string;
 
   @IsOptional()

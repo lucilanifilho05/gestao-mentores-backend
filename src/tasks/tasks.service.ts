@@ -25,6 +25,7 @@ import type {
 } from './dto/listar-tarefas-query.dto';
 import type { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
 import type { AtualizarTarefaDto } from './dto/atualizar-tarefa.dto';
+import { sanitizeTaskDescription } from './task-description';
 
 const tarefaResumoSelect = {
   id: true,
@@ -287,7 +288,10 @@ export class TasksService {
       );
     }
 
-    if (!dto.responsavelId) {
+    const responsavelId =
+      usuario.papel === Papel.MENTOR ? usuario.id : dto.responsavelId;
+
+    if (!responsavelId) {
       throw new BadRequestException(
         'responsavelId é obrigatório para tarefas de escopo curso ou turma.',
       );
@@ -295,7 +299,7 @@ export class TasksService {
 
     const responsavel = await this.prisma.usuario.findUnique({
       where: {
-        id: dto.responsavelId,
+        id: responsavelId,
       },
 
       select: {
@@ -323,12 +327,6 @@ export class TasksService {
      * Coordenadora cria para qualquer mentor.
      * Mentor cria somente para si próprio.
      */
-    if (usuario.papel === Papel.MENTOR && dto.responsavelId !== usuario.id) {
-      throw new ForbiddenException(
-        'Mentores só podem criar tarefas para si mesmos.',
-      );
-    }
-
     const projeto = await this.prisma.projeto.findFirst({
       where: {
         id: dto.projetoId,
@@ -365,7 +363,7 @@ export class TasksService {
      */
     if (referencias.cursoId) {
       await this.validarResponsavelVinculadoAoCurso(
-        dto.responsavelId,
+        responsavelId,
         referencias.cursoId,
       );
     }
@@ -377,10 +375,10 @@ export class TasksService {
 
         titulo: dto.titulo.trim().replace(/\s+/g, ' '),
 
-        descricao: dto.descricao?.trim() || null,
+        descricao: sanitizeTaskDescription(dto.descricao),
 
         criadoPorId: usuario.id,
-        responsavelId: dto.responsavelId,
+        responsavelId,
 
         escopo,
         cursoId: referencias.cursoId,
@@ -478,7 +476,7 @@ export class TasksService {
               projetoId: projeto.id,
               tipoAtividadeId: dto.tipoAtividadeId,
               titulo: dto.titulo.trim().replace(/\s+/g, ' '),
-              descricao: dto.descricao?.trim() || null,
+              descricao: sanitizeTaskDescription(dto.descricao),
               criadoPorId: usuario.id,
               responsavelId,
               escopo: EscopoTarefa.EVENTO_MACRO,
@@ -564,7 +562,7 @@ export class TasksService {
         data: {
           tipoAtividadeId: dto.tipoAtividadeId,
           titulo: dto.titulo.trim().replace(/\s+/g, ' '),
-          descricao: dto.descricao?.trim() || null,
+          descricao: sanitizeTaskDescription(dto.descricao),
           links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
         },
         select: tarefaDetalheSelect,
@@ -927,7 +925,7 @@ export class TasksService {
       tipoAtividadeNome: tarefa.tipoAtividade.nome,
 
       titulo: tarefa.titulo,
-      descricao: tarefa.descricao,
+      descricao: sanitizeTaskDescription(tarefa.descricao),
 
       criadoPorId: tarefa.criadoPorId,
 
