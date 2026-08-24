@@ -19,8 +19,6 @@ import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 @ApiTags('Relatórios')
 @ApiAutenticado()
 @Controller('relatorios')
-
-@Controller('relatorios')
 export class ReportsController {
   constructor(
     private readonly reportsService:

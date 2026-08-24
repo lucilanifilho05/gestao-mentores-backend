@@ -45,4 +45,11 @@ export class RelatorioTarefasQueryDto {
       'turmaId deve ser um UUID válido.',
   })
   turmaId?: string;
+
+  @IsOptional()
+  @IsUUID('4', {
+    message:
+      'tipoAtividadeId deve ser um UUID válido.',
+  })
+  tipoAtividadeId?: string;
 }

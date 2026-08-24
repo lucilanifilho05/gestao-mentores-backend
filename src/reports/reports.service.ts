@@ -418,6 +418,12 @@ export class ReportsService {
           }
         : {}),
 
+      ...(query.tipoAtividadeId
+        ? {
+            tipoAtividadeId: query.tipoAtividadeId,
+          }
+        : {}),
+
       ...(inicio || fim
         ? {
             prazoAtual: {
