@@ -145,6 +145,19 @@ export class TasksService {
       ? this.converterEscopo(query.escopo)
       : undefined;
 
+    const inicio = query.inicio
+      ? new Date(`${query.inicio}T00:00:00.000-03:00`)
+      : undefined;
+    const fim = query.fim
+      ? new Date(`${query.fim}T23:59:59.999-03:00`)
+      : undefined;
+
+    if (inicio && fim && inicio > fim) {
+      throw new BadRequestException(
+        'A data inicial não pode ser posterior à data final.',
+      );
+    }
+
     const where: Prisma.TarefaWhereInput = {
       ...(query.projetoId ? { projetoId: query.projetoId } : {}),
       /*
@@ -170,6 +183,19 @@ export class TasksService {
       ...(query.turmaId
         ? {
             turmaId: query.turmaId,
+          }
+        : {}),
+
+      ...(query.tipoAtividadeId
+        ? { tipoAtividadeId: query.tipoAtividadeId }
+        : {}),
+
+      ...(inicio || fim
+        ? {
+            prazoAtual: {
+              ...(inicio ? { gte: inicio } : {}),
+              ...(fim ? { lte: fim } : {}),
+            },
           }
         : {}),
 

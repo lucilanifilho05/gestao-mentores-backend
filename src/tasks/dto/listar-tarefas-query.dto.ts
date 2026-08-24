@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 import { ESCOPOS_TAREFA, type EscopoTarefaEntrada } from './criar-tarefa.dto';
 
@@ -8,6 +8,14 @@ export const STATUS_TAREFA = ['pendente', 'concluida'] as const;
 export type StatusTarefaEntrada = (typeof STATUS_TAREFA)[number];
 
 export class ListarTarefasQueryDto {
+  @IsOptional()
+  @IsDateString({}, { message: 'inicio deve ser uma data ISO válida.' })
+  inicio?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'fim deve ser uma data ISO válida.' })
+  fim?: string;
+
   @IsOptional()
   @IsUUID('4')
   projetoId?: string;
@@ -23,6 +31,10 @@ export class ListarTarefasQueryDto {
   @IsOptional()
   @IsUUID('4')
   turmaId?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  tipoAtividadeId?: string;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
