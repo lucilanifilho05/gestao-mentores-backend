@@ -204,6 +204,7 @@ model Projeto {
 
 model Tarefa {
   id              String       @id @default(uuid()) @db.Uuid
+  numero          Int          @unique @default(autoincrement())
   tipoAtividadeId String       @map("tipo_atividade_id") @db.Uuid
   projetoId       String       @map("projeto_id") @db.Uuid
   titulo          String       @db.VarChar(200)

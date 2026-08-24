@@ -67,6 +67,7 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
 
   return {
     id: ID_TAREFA,
+    numero: 123,
     projetoId: ID_PROJETO,
     projeto: {
       id: ID_PROJETO,

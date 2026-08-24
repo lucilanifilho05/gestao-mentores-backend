@@ -29,6 +29,7 @@ import { sanitizeTaskDescription } from './task-description';
 
 const tarefaResumoSelect = {
   id: true,
+  numero: true,
   projetoId: true,
   tipoAtividadeId: true,
   titulo: true,
@@ -942,6 +943,7 @@ export class TasksService {
   private formatarResumo(tarefa: TarefaResumo) {
     return {
       id: tarefa.id,
+      numero: tarefa.numero,
 
       projetoId: tarefa.projetoId,
       projetoNome: tarefa.projeto.nome,
