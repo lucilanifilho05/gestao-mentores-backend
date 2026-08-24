@@ -269,6 +269,22 @@ describe('TasksService', () => {
     });
   });
 
+  it('deve filtrar a listagem pelo número global da tarefa', async () => {
+    prismaMock.tarefa.findMany.mockResolvedValue([]);
+    prismaMock.tarefa.count.mockResolvedValue(0);
+
+    await service.listar({ numero: 123 }, coordenadora);
+
+    expect(prismaMock.tarefa.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ numero: 123 }),
+      }),
+    );
+    expect(prismaMock.tarefa.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ numero: 123 }),
+    });
+  });
+
   it('não deve permitir que mentor crie tarefa para outro usuário', async () => {
     prismaMock.tipoAtividade.findUnique.mockResolvedValue({
       id: ID_TIPO_ATIVIDADE,

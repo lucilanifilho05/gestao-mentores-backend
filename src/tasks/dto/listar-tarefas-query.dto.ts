@@ -9,6 +9,12 @@ export type StatusTarefaEntrada = (typeof STATUS_TAREFA)[number];
 
 export class ListarTarefasQueryDto {
   @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'numero deve ser um número inteiro.' })
+  @Min(1, { message: 'numero deve ser maior que zero.' })
+  numero?: number;
+
+  @IsOptional()
   @IsDateString({}, { message: 'inicio deve ser uma data ISO válida.' })
   inicio?: string;
 

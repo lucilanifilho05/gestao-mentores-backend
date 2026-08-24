@@ -160,6 +160,7 @@ export class TasksService {
     }
 
     const where: Prisma.TarefaWhereInput = {
+      ...(query.numero ? { numero: query.numero } : {}),
       ...(query.projetoId ? { projetoId: query.projetoId } : {}),
       /*
        * O mentor sempre visualiza somente as tarefas

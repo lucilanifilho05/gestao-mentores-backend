@@ -13,6 +13,7 @@ const DATA_SIMPLES_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const tarefaRelatorioSelect = {
   id: true,
+  numero: true,
   titulo: true,
   descricao: true,
   escopo: true,
@@ -101,6 +102,11 @@ export class ReportsService {
 
     worksheet.columns = [
       {
+        header: 'ID global',
+        key: 'idGlobal',
+        width: 14,
+      },
+      {
         header: 'Título',
         key: 'titulo',
         width: 35,
@@ -161,7 +167,7 @@ export class ReportsService {
 
     worksheet.autoFilter = {
       from: 'A1',
-      to: 'J1',
+      to: 'K1',
     };
 
     const cabecalho = worksheet.getRow(1);
@@ -177,6 +183,8 @@ export class ReportsService {
 
     for (const tarefa of tarefas) {
       worksheet.addRow({
+        idGlobal: tarefa.numero,
+
         titulo: tarefa.titulo,
 
         tipo: tarefa.tipoAtividade.nome,
@@ -254,9 +262,10 @@ export class ReportsService {
 
       documento.moveDown(1);
 
-      const larguras = [180, 105, 125, 85, 100, 75, 55];
+      const larguras = [55, 169, 105, 125, 85, 100, 75, 55];
 
       const titulos = [
+        'ID global',
         'Título',
         'Tipo',
         'Responsável',
@@ -344,6 +353,8 @@ export class ReportsService {
 
       for (const tarefa of tarefas) {
         desenharLinha([
+          String(tarefa.numero),
+
           tarefa.titulo,
 
           tarefa.tipoAtividade.nome,
@@ -488,6 +499,7 @@ export class ReportsService {
   private formatarTarefa(tarefa: TarefaRelatorio) {
     return {
       id: tarefa.id,
+      numero: tarefa.numero,
       projeto: tarefa.projeto,
       titulo: tarefa.titulo,
       descricao: tarefa.descricao,
