@@ -21,6 +21,9 @@ import { ListarUsuariosQueryDto } from './dto/listar-usuarios-query.dto';
 import { UsersService } from './users.service';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
+import { AtualizarPerfilUsuarioDto } from './dto/atualizar-perfil-usuario.dto';
+import { AlterarPropriaSenhaDto } from './dto/alterar-propria-senha.dto';
+import { RedefinirSenhaUsuarioDto } from './dto/redefinir-senha-usuario.dto';
 
 @ApiTags('Usuários')
 @ApiAutenticado()
@@ -50,6 +53,42 @@ export class UsersController {
     return this.usersService.criar(dto);
   }
 
+  @Patch('eu')
+  atualizarMeuPerfil(
+    @Body() dto: AtualizarPerfilUsuarioDto,
+    @UsuarioAtual() usuarioAtual: UsuarioAutenticado,
+  ) {
+    return this.usersService.atualizarPerfil(usuarioAtual.id, dto);
+  }
+
+  @Patch('eu/senha')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async alterarMinhaSenha(
+    @Body() dto: AlterarPropriaSenhaDto,
+    @UsuarioAtual() usuarioAtual: UsuarioAutenticado,
+  ): Promise<void> {
+    await this.usersService.alterarPropriaSenha(usuarioAtual.id, dto);
+  }
+
+  @Patch(':usuarioId')
+  @Papeis(Papel.COORDENADORA)
+  atualizarMentor(
+    @Param('usuarioId', new ParseUUIDPipe({ version: '4' })) usuarioId: string,
+    @Body() dto: AtualizarPerfilUsuarioDto,
+  ) {
+    return this.usersService.atualizarMentor(usuarioId, dto);
+  }
+
+  @Patch(':usuarioId/senha')
+  @Papeis(Papel.COORDENADORA)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async redefinirSenhaMentor(
+    @Param('usuarioId', new ParseUUIDPipe({ version: '4' })) usuarioId: string,
+    @Body() dto: RedefinirSenhaUsuarioDto,
+  ): Promise<void> {
+    await this.usersService.redefinirSenhaMentor(usuarioId, dto);
+  }
+
   @Patch(':usuarioId/status')
   @Papeis(Papel.COORDENADORA)
   alterarStatus(
@@ -70,7 +109,7 @@ export class UsersController {
     return this.usersService.alterarStatus(
       usuarioId,
       dto,
-      usuarioAtual.id,
+      usuarioAtual,
     );
   }
 }

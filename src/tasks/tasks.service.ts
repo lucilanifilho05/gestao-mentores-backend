@@ -25,6 +25,7 @@ import type {
 } from './dto/listar-tarefas-query.dto';
 import type { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
 import type { AtualizarTarefaDto } from './dto/atualizar-tarefa.dto';
+import type { CriarComentarioTarefaDto } from './dto/criar-comentario-tarefa.dto';
 import { sanitizeTaskDescription } from './task-description';
 
 const tarefaResumoSelect = {
@@ -91,12 +92,29 @@ const tarefaResumoSelect = {
   _count: {
     select: {
       reagendamentos: true,
+      comentarios: true,
     },
+  },
+  comentarios: {
+    where: { lidoEm: null },
+    take: 1,
+    select: { id: true, lidoEm: true },
   },
 } satisfies Prisma.TarefaSelect;
 
 const tarefaDetalheSelect = {
   ...tarefaResumoSelect,
+
+  comentarios: {
+    orderBy: { criadoEm: 'asc' },
+    select: {
+      id: true,
+      conteudo: true,
+      criadoEm: true,
+      lidoEm: true,
+      autor: { select: { id: true, nome: true, email: true } },
+    },
+  },
 
   reagendamentos: {
     orderBy: {
@@ -267,6 +285,63 @@ export class TasksService {
     }
 
     return this.formatarDetalhe(tarefa);
+  }
+
+  async adicionarComentario(
+    tarefaId: string,
+    dto: CriarComentarioTarefaDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    if (usuario.papel !== Papel.COORDENADORA) {
+      throw new ForbiddenException('Somente a coordenadora pode adicionar comentários.');
+    }
+
+    const tarefa = await this.prisma.tarefa.findUnique({
+      where: { id: tarefaId },
+      select: { id: true, status: true },
+    });
+
+    if (!tarefa) throw new NotFoundException('Tarefa não encontrada.');
+    if (tarefa.status === StatusTarefa.CONCLUIDA) {
+      throw new ConflictException('Não é possível comentar uma tarefa concluída.');
+    }
+
+    return this.prisma.comentarioTarefa.create({
+      data: { tarefaId, autorId: usuario.id, conteudo: dto.conteudo.trim() },
+      select: {
+        id: true,
+        conteudo: true,
+        criadoEm: true,
+        lidoEm: true,
+        autor: { select: { id: true, nome: true, email: true } },
+      },
+    });
+  }
+
+  async marcarComentariosComoLidos(tarefaId: string, usuario: UsuarioAutenticado) {
+    if (usuario.papel !== Papel.MENTOR) {
+      return { quantidadeMarcada: 0 };
+    }
+
+    const tarefa = await this.prisma.tarefa.findFirst({
+      where: { id: tarefaId, responsavelId: usuario.id },
+      select: { id: true },
+    });
+    if (!tarefa) throw new NotFoundException('Tarefa não encontrada ou não acessível.');
+
+    const resultado = await this.prisma.comentarioTarefa.updateMany({
+      where: { tarefaId, lidoEm: null },
+      data: { lidoEm: new Date() },
+    });
+    return { quantidadeMarcada: resultado.count };
+  }
+
+  async contarComentariosNaoLidos(usuario: UsuarioAutenticado) {
+    if (usuario.papel !== Papel.MENTOR) return { quantidade: 0 };
+    const quantidade = await this.prisma.comentarioTarefa.count({
+      where: { lidoEm: null, tarefa: { responsavelId: usuario.id } },
+    });
+    return { quantidade };
   }
 
   async criar(dto: CriarTarefaDto, usuario: UsuarioAutenticado) {
@@ -986,6 +1061,10 @@ export class TasksService {
       links: tarefa.links,
 
       quantidadeReagendamentos: tarefa._count.reagendamentos,
+      quantidadeComentarios: tarefa._count.comentarios,
+      possuiComentarioNaoLido: tarefa.comentarios.some(
+        (comentario) => comentario.lidoEm === null,
+      ),
     };
   }
 
@@ -1007,6 +1086,13 @@ export class TasksService {
         reagendadoPor: reagendamento.reagendadoPor,
 
         criadoEm: reagendamento.criadoEm,
+      })),
+      comentarios: tarefa.comentarios.map((comentario) => ({
+        id: comentario.id,
+        conteudo: comentario.conteudo,
+        criadoEm: comentario.criadoEm,
+        lidoEm: comentario.lidoEm,
+        autor: comentario.autor,
       })),
     };
   }

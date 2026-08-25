@@ -18,21 +18,22 @@ enum Papel {
 }
 
 model Usuario {
-  id                  String          @id @default(uuid()) @db.Uuid
-  nome                String          @db.VarChar(150)
-  email               String          @db.VarChar(254)
-  emailNormalizado    String          @unique(map: "usuarios_email_normalizado_key") @map("email_normalizado") @db.VarChar(254)
-  senhaHash           String          @map("senha_hash")
-  papel               Papel           @default(MENTOR)
-  ativo               Boolean         @default(true)
-  tokenVersion        Int             @default(0) @map("token_version")
-  ultimoLoginEm       DateTime?       @map("ultimo_login_em") @db.Timestamptz(3)
-  criadoEm            DateTime        @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm        DateTime        @updatedAt @map("atualizado_em") @db.Timestamptz(3)
-  tarefasCriadas      Tarefa[]        @relation("TarefaCriador")
-  tarefasResponsaveis Tarefa[]        @relation("TarefaResponsavel")
-  reagendamentos      Reagendamento[] @relation("ReagendamentoUsuario")
-  projetosCriados     Projeto[]       @relation("ProjetoCriador")
+  id                  String             @id @default(uuid()) @db.Uuid
+  nome                String             @db.VarChar(150)
+  email               String             @db.VarChar(254)
+  emailNormalizado    String             @unique(map: "usuarios_email_normalizado_key") @map("email_normalizado") @db.VarChar(254)
+  senhaHash           String             @map("senha_hash")
+  papel               Papel              @default(MENTOR)
+  ativo               Boolean            @default(true)
+  tokenVersion        Int                @default(0) @map("token_version")
+  ultimoLoginEm       DateTime?          @map("ultimo_login_em") @db.Timestamptz(3)
+  criadoEm            DateTime           @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm        DateTime           @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  tarefasCriadas      Tarefa[]           @relation("TarefaCriador")
+  tarefasResponsaveis Tarefa[]           @relation("TarefaResponsavel")
+  reagendamentos      Reagendamento[]    @relation("ReagendamentoUsuario")
+  comentariosTarefa   ComentarioTarefa[] @relation("ComentarioTarefaAutor")
+  projetosCriados     Projeto[]          @relation("ProjetoCriador")
 
   sessoes         Sessao[]
   cursosMentoria  CursoMentor[] @relation("MentorCursos")
@@ -234,6 +235,7 @@ model Tarefa {
   turma Turma? @relation(fields: [turmaId], references: [id], onDelete: Restrict)
 
   reagendamentos Reagendamento[]
+  comentarios    ComentarioTarefa[]
 
   @@index([responsavelId, status, prazoAtual], map: "tarefas_responsavel_status_prazo_idx")
   @@index([cursoId, prazoAtual], map: "tarefas_curso_prazo_idx")
@@ -242,6 +244,23 @@ model Tarefa {
   @@index([projetoId, status, prazoAtual], map: "tarefas_projeto_status_prazo_idx")
   @@index([criadoPorId], map: "tarefas_criado_por_idx")
   @@map("tarefas")
+}
+
+model ComentarioTarefa {
+  id       String    @id @default(uuid()) @db.Uuid
+  tarefaId String    @map("tarefa_id") @db.Uuid
+  autorId  String    @map("autor_id") @db.Uuid
+  conteudo String    @db.Text
+  criadoEm DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  lidoEm   DateTime? @map("lido_em") @db.Timestamptz(3)
+
+  tarefa Tarefa  @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  autor  Usuario @relation("ComentarioTarefaAutor", fields: [autorId], references: [id], onDelete: Restrict)
+
+  @@index([tarefaId, criadoEm], map: "comentarios_tarefa_tarefa_criado_em_idx")
+  @@index([tarefaId, lidoEm], map: "comentarios_tarefa_tarefa_lido_em_idx")
+  @@index([autorId], map: "comentarios_tarefa_autor_idx")
+  @@map("comentarios_tarefa")
 }
 
 model Reagendamento {

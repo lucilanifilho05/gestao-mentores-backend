@@ -17,6 +17,7 @@ import { CriarTarefaDto } from './dto/criar-tarefa.dto';
 import { AtualizarTarefaDto } from './dto/atualizar-tarefa.dto';
 import { ListarTarefasQueryDto } from './dto/listar-tarefas-query.dto';
 import { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
+import { CriarComentarioTarefaDto } from './dto/criar-comentario-tarefa.dto';
 import { TasksService } from './tasks.service';
 import {ApiTags,} from '@nestjs/swagger';
 
@@ -79,6 +80,11 @@ export class TasksController {
     );
   }
 
+  @Get('comentarios/nao-lidos/quantidade')
+  quantidadeComentariosNaoLidos(@UsuarioAtual() usuario: UsuarioAutenticado) {
+    return this.tasksService.contarComentariosNaoLidos(usuario);
+  }
+
   @Patch(':tarefaId')
   atualizar(
     @Param('tarefaId', new ParseUUIDPipe({ version: '4' })) tarefaId: string,
@@ -86,6 +92,23 @@ export class TasksController {
     @UsuarioAtual() usuario: UsuarioAutenticado,
   ) {
     return this.tasksService.atualizar(tarefaId, dto, usuario);
+  }
+
+  @Post(':tarefaId/comentarios')
+  adicionarComentario(
+    @Param('tarefaId', new ParseUUIDPipe({ version: '4' })) tarefaId: string,
+    @Body() dto: CriarComentarioTarefaDto,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.tasksService.adicionarComentario(tarefaId, dto, usuario);
+  }
+
+  @Post(':tarefaId/comentarios/marcar-lidos')
+  marcarComentariosComoLidos(
+    @Param('tarefaId', new ParseUUIDPipe({ version: '4' })) tarefaId: string,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.tasksService.marcarComentariosComoLidos(tarefaId, usuario);
   }
 
   @Post(':tarefaId/reagendar')

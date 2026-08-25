@@ -122,9 +122,11 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
       : null,
 
     turma: null,
+    comentarios: [],
 
     _count: {
       reagendamentos: 0,
+      comentarios: 0,
     },
 
     reagendamentos: [],
@@ -164,6 +166,11 @@ const prismaMock = {
     findUnique: criarMockAssincrono(),
     create: criarMockAssincrono(),
     update: criarMockAssincrono(),
+  },
+  comentarioTarefa: {
+    create: criarMockAssincrono(),
+    updateMany: criarMockAssincrono(),
+    count: criarMockAssincrono(),
   },
 
   projeto: {
@@ -759,5 +766,59 @@ describe('TasksService', () => {
     expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
 
     expect(resultado.status).toBe('concluida');
+  });
+
+  it('deve permitir que a coordenadora adicione comentário em tarefa pendente', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      status: StatusTarefa.PENDENTE,
+    });
+    prismaMock.comentarioTarefa.create.mockResolvedValue({
+      id: '88888888-8888-4888-8888-888888888888',
+      conteudo: 'Complemente as informações.',
+      criadoEm: new Date(),
+      lidoEm: null,
+      autor: {
+        id: ID_COORDENADORA,
+        nome: coordenadora.nome,
+        email: coordenadora.email,
+      },
+    });
+
+    await service.adicionarComentario(
+      ID_TAREFA,
+      { conteudo: 'Complemente as informações.' },
+      coordenadora,
+    );
+
+    expect(prismaMock.comentarioTarefa.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          tarefaId: ID_TAREFA,
+          autorId: ID_COORDENADORA,
+          conteudo: 'Complemente as informações.',
+        },
+      }),
+    );
+  });
+
+  it('não deve permitir que mentor adicione comentário', async () => {
+    await expect(
+      service.adicionarComentario(ID_TAREFA, { conteudo: 'Comentário' }, mentor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prismaMock.comentarioTarefa.create).not.toHaveBeenCalled();
+  });
+
+  it('deve marcar comentários como lidos somente para o mentor responsável', async () => {
+    prismaMock.tarefa.findFirst.mockResolvedValue({ id: ID_TAREFA });
+    prismaMock.comentarioTarefa.updateMany.mockResolvedValue({ count: 2 });
+
+    const resultado = await service.marcarComentariosComoLidos(ID_TAREFA, mentor);
+
+    expect(prismaMock.comentarioTarefa.updateMany).toHaveBeenCalledWith({
+      where: { tarefaId: ID_TAREFA, lidoEm: null },
+      data: { lidoEm: expect.any(Date) },
+    });
+    expect(resultado).toEqual({ quantidadeMarcada: 2 });
   });
 });
