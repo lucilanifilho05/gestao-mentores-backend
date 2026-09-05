@@ -168,8 +168,9 @@ enum EscopoTarefa {
 }
 
 enum StatusTarefa {
-  PENDENTE  @map("pendente")
-  CONCLUIDA @map("concluida")
+  PLANEJADA    @map("planejada")
+  EM_ANDAMENTO @map("em_andamento")
+  CONCLUIDA    @map("concluida")
 
   @@map("status_tarefa")
 }
@@ -217,10 +218,11 @@ model Tarefa {
   turmaId         String?      @map("turma_id") @db.Uuid
   prazoInicio     DateTime?    @map("prazo_inicio") @db.Timestamptz(3)
   prazoAtual      DateTime     @map("prazo_atual") @db.Timestamptz(3)
-  status          StatusTarefa @default(PENDENTE)
+  status          StatusTarefa @default(PLANEJADA)
   criadoEm        DateTime     @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm    DateTime     @updatedAt @map("atualizado_em") @db.Timestamptz(3)
   concluidoEm     DateTime?    @map("concluido_em") @db.Timestamptz(3)
+  iniciadoEm      DateTime?    @map("iniciado_em") @db.Timestamptz(3)
   links           String[]     @default([])
 
   tipoAtividade TipoAtividade @relation(fields: [tipoAtividadeId], references: [id], onDelete: Restrict)

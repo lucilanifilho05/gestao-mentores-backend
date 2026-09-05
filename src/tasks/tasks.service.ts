@@ -46,6 +46,7 @@ const tarefaResumoSelect = {
   criadoEm: true,
   atualizadoEm: true,
   concluidoEm: true,
+  iniciadoEm: true,
   links: true,
 
   projeto: {
@@ -156,10 +157,6 @@ export class TasksService {
     const pagina = query.pagina ?? 1;
     const limite = query.limite ?? 20;
 
-    const status = query.status
-      ? this.converterStatus(query.status)
-      : undefined;
-
     const escopo = query.escopo
       ? this.converterEscopo(query.escopo)
       : undefined;
@@ -176,6 +173,14 @@ export class TasksService {
         'A data inicial não pode ser posterior à data final.',
       );
     }
+
+    const agora = new Date();
+    const filtroStatus = this.criarFiltroStatus(query.status);
+    const filtraAtrasadas = query.status === 'atrasada';
+    const filtraAbertasNoPrazo =
+      query.status === 'planejada' || query.status === 'em_andamento';
+    const prazoMinimo =
+      filtraAbertasNoPrazo && (!inicio || agora > inicio) ? agora : inicio;
 
     const where: Prisma.TarefaWhereInput = {
       ...(query.numero ? { numero: query.numero } : {}),
@@ -210,20 +215,16 @@ export class TasksService {
         ? { tipoAtividadeId: query.tipoAtividadeId }
         : {}),
 
-      ...(inicio || fim
+      ...(inicio || fim || filtraAtrasadas || filtraAbertasNoPrazo
         ? {
             prazoAtual: {
-              ...(inicio ? { gte: inicio } : {}),
+              ...(prazoMinimo ? { gte: prazoMinimo } : {}),
               ...(fim ? { lte: fim } : {}),
+              ...(filtraAtrasadas ? { lt: agora } : {}),
             },
           }
         : {}),
-
-      ...(status
-        ? {
-            status,
-          }
-        : {}),
+      ...filtroStatus,
 
       ...(escopo
         ? {
@@ -293,7 +294,9 @@ export class TasksService {
     usuario: UsuarioAutenticado,
   ) {
     if (usuario.papel !== Papel.COORDENADORA) {
-      throw new ForbiddenException('Somente a coordenadora pode adicionar comentários.');
+      throw new ForbiddenException(
+        'Somente a coordenadora pode adicionar comentários.',
+      );
     }
 
     const tarefa = await this.prisma.tarefa.findUnique({
@@ -303,7 +306,9 @@ export class TasksService {
 
     if (!tarefa) throw new NotFoundException('Tarefa não encontrada.');
     if (tarefa.status === StatusTarefa.CONCLUIDA) {
-      throw new ConflictException('Não é possível comentar uma tarefa concluída.');
+      throw new ConflictException(
+        'Não é possível comentar uma tarefa concluída.',
+      );
     }
 
     return this.prisma.comentarioTarefa.create({
@@ -318,7 +323,10 @@ export class TasksService {
     });
   }
 
-  async marcarComentariosComoLidos(tarefaId: string, usuario: UsuarioAutenticado) {
+  async marcarComentariosComoLidos(
+    tarefaId: string,
+    usuario: UsuarioAutenticado,
+  ) {
     if (usuario.papel !== Papel.MENTOR) {
       return { quantidadeMarcada: 0 };
     }
@@ -327,7 +335,8 @@ export class TasksService {
       where: { id: tarefaId, responsavelId: usuario.id },
       select: { id: true },
     });
-    if (!tarefa) throw new NotFoundException('Tarefa não encontrada ou não acessível.');
+    if (!tarefa)
+      throw new NotFoundException('Tarefa não encontrada ou não acessível.');
 
     const resultado = await this.prisma.comentarioTarefa.updateMany({
       where: { tarefaId, lidoEm: null },
@@ -490,7 +499,8 @@ export class TasksService {
         prazoInicio,
         prazoAtual,
 
-        status: StatusTarefa.PENDENTE,
+        status: StatusTarefa.PLANEJADA,
+        iniciadoEm: null,
         concluidoEm: null,
         links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
       },
@@ -587,7 +597,8 @@ export class TasksService {
               turmaId: null,
               prazoInicio,
               prazoAtual,
-              status: StatusTarefa.PENDENTE,
+              status: StatusTarefa.PLANEJADA,
+              iniciadoEm: null,
               concluidoEm: null,
               links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
             },
@@ -661,7 +672,7 @@ export class TasksService {
 
     try {
       const atualizada = await this.prisma.tarefa.update({
-        where: { id: tarefa.id, status: StatusTarefa.PENDENTE },
+        where: { id: tarefa.id, status: { not: StatusTarefa.CONCLUIDA } },
         data: {
           tipoAtividadeId: dto.tipoAtividadeId,
           titulo: dto.titulo.trim().replace(/\s+/g, ' '),
@@ -826,6 +837,71 @@ export class TasksService {
     });
   }
 
+  async iniciar(tarefaId: string, usuario: UsuarioAutenticado) {
+    const tarefa = await this.prisma.tarefa.findUnique({
+      where: { id: tarefaId },
+      select: {
+        id: true,
+        responsavelId: true,
+        status: true,
+        prazoAtual: true,
+      },
+    });
+
+    if (!tarefa) throw new NotFoundException('Tarefa não encontrada.');
+
+    const podeIniciar =
+      usuario.papel === Papel.COORDENADORA ||
+      tarefa.responsavelId === usuario.id;
+    if (!podeIniciar) {
+      throw new ForbiddenException(
+        'Só o responsável pela tarefa ou a coordenadora pode iniciá-la.',
+      );
+    }
+    if (tarefa.status === StatusTarefa.CONCLUIDA) {
+      throw new ConflictException(
+        'Uma tarefa concluída não pode ser iniciada.',
+      );
+    }
+    if (tarefa.status === StatusTarefa.EM_ANDAMENTO) {
+      const atual = await this.prisma.tarefa.findUnique({
+        where: { id: tarefa.id },
+        select: tarefaDetalheSelect,
+      });
+      if (!atual) throw new NotFoundException('Tarefa não encontrada.');
+      return this.formatarDetalhe(atual);
+    }
+    if (tarefa.prazoAtual.getTime() < Date.now()) {
+      throw new ConflictException(
+        'Uma tarefa atrasada deve ser reagendada ou concluída.',
+      );
+    }
+
+    try {
+      const atualizada = await this.prisma.tarefa.update({
+        where: { id: tarefa.id, status: StatusTarefa.PLANEJADA },
+        data: {
+          status: StatusTarefa.EM_ANDAMENTO,
+          iniciadoEm: new Date(),
+        },
+        select: tarefaDetalheSelect,
+      });
+      return this.formatarDetalhe(atualizada);
+    } catch (erro: unknown) {
+      if (
+        typeof erro === 'object' &&
+        erro !== null &&
+        'code' in erro &&
+        (erro as { code?: unknown }).code === 'P2025'
+      ) {
+        throw new ConflictException(
+          'O status da tarefa foi alterado simultaneamente.',
+        );
+      }
+      throw erro;
+    }
+  }
+
   private async validarEscopo(
     escopo: EscopoTarefa,
     dto: CriarTarefaDto,
@@ -983,13 +1059,20 @@ export class TasksService {
     }
   }
 
-  private converterStatus(valor: StatusTarefaEntrada): StatusTarefa {
+  private criarFiltroStatus(
+    valor: StatusTarefaEntrada | undefined,
+  ): Prisma.TarefaWhereInput {
     switch (valor) {
-      case 'pendente':
-        return StatusTarefa.PENDENTE;
-
+      case 'planejada':
+        return { status: StatusTarefa.PLANEJADA };
+      case 'em_andamento':
+        return { status: StatusTarefa.EM_ANDAMENTO };
+      case 'atrasada':
+        return { status: { not: StatusTarefa.CONCLUIDA } };
       case 'concluida':
-        return StatusTarefa.CONCLUIDA;
+        return { status: StatusTarefa.CONCLUIDA };
+      default:
+        return {};
     }
   }
 
@@ -1006,11 +1089,22 @@ export class TasksService {
     }
   }
 
-  private serializarStatus(status: StatusTarefa): StatusTarefaEntrada {
-    switch (status) {
-      case StatusTarefa.PENDENTE:
-        return 'pendente';
+  private serializarStatus(
+    status: StatusTarefa,
+    prazoAtual: Date,
+  ): StatusTarefaEntrada {
+    if (
+      status !== StatusTarefa.CONCLUIDA &&
+      prazoAtual.getTime() < Date.now()
+    ) {
+      return 'atrasada';
+    }
 
+    switch (status) {
+      case StatusTarefa.PLANEJADA:
+        return 'planejada';
+      case StatusTarefa.EM_ANDAMENTO:
+        return 'em_andamento';
       case StatusTarefa.CONCLUIDA:
         return 'concluida';
     }
@@ -1051,12 +1145,13 @@ export class TasksService {
 
       prazoAtual: tarefa.prazoAtual,
 
-      status: this.serializarStatus(tarefa.status),
+      status: this.serializarStatus(tarefa.status, tarefa.prazoAtual),
 
       criadoEm: tarefa.criadoEm,
       atualizadoEm: tarefa.atualizadoEm,
 
       concluidoEm: tarefa.concluidoEm,
+      iniciadoEm: tarefa.iniciadoEm,
 
       links: tarefa.links,
 

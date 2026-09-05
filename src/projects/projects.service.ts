@@ -97,7 +97,9 @@ export class ProjectsService {
         id: true,
         status: true,
         _count: {
-          select: { tarefas: { where: { status: StatusTarefa.PENDENTE } } },
+          select: {
+            tarefas: { where: { status: { not: StatusTarefa.CONCLUIDA } } },
+          },
         },
       },
     });
@@ -108,7 +110,7 @@ export class ProjectsService {
       );
     if (projeto._count.tarefas > 0)
       throw new ConflictException(
-        'Conclua todas as tarefas pendentes antes de concluir o projeto.',
+        'Conclua todas as tarefas abertas antes de concluir o projeto.',
       );
     return this.atualizarStatus(id, StatusProjeto.CONCLUIDO);
   }

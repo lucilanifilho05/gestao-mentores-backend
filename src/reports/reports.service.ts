@@ -22,6 +22,7 @@ const tarefaRelatorioSelect = {
   status: true,
   criadoEm: true,
   concluidoEm: true,
+  iniciadoEm: true,
   links: true,
   projeto: { select: { id: true, nome: true } },
 
@@ -199,7 +200,7 @@ export class ReportsService {
 
         prazo: this.formatarData(tarefa.prazoAtual),
 
-        status: this.serializarEnum(tarefa.status),
+        status: this.statusEfetivo(tarefa.status, tarefa.prazoAtual),
 
         reagendamentos: tarefa._count.reagendamentos,
 
@@ -365,7 +366,7 @@ export class ReportsService {
 
           this.formatarData(tarefa.prazoAtual),
 
-          this.serializarEnum(tarefa.status),
+          this.statusEfetivo(tarefa.status, tarefa.prazoAtual),
 
           String(tarefa._count.reagendamentos),
         ]);
@@ -523,7 +524,7 @@ export class ReportsService {
 
       prazoAtual: tarefa.prazoAtual,
 
-      status: this.serializarEnum(tarefa.status),
+      status: this.statusEfetivo(tarefa.status, tarefa.prazoAtual),
 
       quantidadeReagendamentos: tarefa._count.reagendamentos,
 
@@ -532,11 +533,19 @@ export class ReportsService {
       criadoEm: tarefa.criadoEm,
 
       concluidoEm: tarefa.concluidoEm,
+      iniciadoEm: tarefa.iniciadoEm,
     };
   }
 
   private serializarEnum(valor: string): string {
     return valor.toLowerCase();
+  }
+
+  private statusEfetivo(status: string, prazoAtual: Date): string {
+    if (status !== 'CONCLUIDA' && prazoAtual.getTime() < Date.now()) {
+      return 'atrasada';
+    }
+    return this.serializarEnum(status);
   }
 
   private formatarData(data: Date): string {

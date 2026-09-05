@@ -1,9 +1,22 @@
 import { Transform, Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 import { ESCOPOS_TAREFA, type EscopoTarefaEntrada } from './criar-tarefa.dto';
 
-export const STATUS_TAREFA = ['pendente', 'concluida'] as const;
+export const STATUS_TAREFA = [
+  'planejada',
+  'em_andamento',
+  'atrasada',
+  'concluida',
+] as const;
 
 export type StatusTarefaEntrada = (typeof STATUS_TAREFA)[number];
 
@@ -47,7 +60,7 @@ export class ListarTarefasQueryDto {
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   @IsIn([...STATUS_TAREFA], {
-    message: 'status deve ser pendente ou concluida.',
+    message: 'status deve ser planejada, em_andamento, atrasada ou concluida.',
   })
   status?: StatusTarefaEntrada;
 

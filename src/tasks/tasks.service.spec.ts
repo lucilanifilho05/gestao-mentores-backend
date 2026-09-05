@@ -47,6 +47,7 @@ interface OpcoesTarefa {
   status?: StatusTarefa;
   cursoId?: string | null;
   concluidoEm?: Date | null;
+  prazoAtual?: Date;
 }
 
 function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
@@ -54,7 +55,7 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
 
   const escopo = opcoes.escopo ?? EscopoTarefa.EVENTO_MACRO;
 
-  const status = opcoes.status ?? StatusTarefa.PENDENTE;
+  const status = opcoes.status ?? StatusTarefa.EM_ANDAMENTO;
 
   const cursoId = opcoes.cursoId ?? null;
 
@@ -87,7 +88,7 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
     turmaId: null,
     prazoInicio: null,
 
-    prazoAtual: new Date('2026-08-15T21:00:00.000Z'),
+    prazoAtual: opcoes.prazoAtual ?? new Date('2026-08-15T21:00:00.000Z'),
 
     status,
 
@@ -96,6 +97,10 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
     atualizadoEm: new Date('2026-08-01T12:00:00.000Z'),
 
     concluidoEm,
+    iniciadoEm:
+      status === StatusTarefa.EM_ANDAMENTO
+        ? new Date('2026-08-01T12:00:00.000Z')
+        : null,
 
     tipoAtividade: {
       id: ID_TIPO_ATIVIDADE,
@@ -385,7 +390,7 @@ describe('TasksService', () => {
           cursoId: null,
           turmaId: null,
 
-          status: StatusTarefa.PENDENTE,
+          status: StatusTarefa.PLANEJADA,
 
           concluidoEm: null,
         }),
@@ -589,7 +594,7 @@ describe('TasksService', () => {
       id: ID_TAREFA,
       responsavelId: ID_MENTOR,
       tipoAtividadeId: ID_TIPO_ATIVIDADE,
-      status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.EM_ANDAMENTO,
     });
     prismaMock.tarefa.update.mockResolvedValue(
       criarTarefaDetalhe({ responsavelId: ID_MENTOR }),
@@ -608,7 +613,10 @@ describe('TasksService', () => {
 
     expect(prismaMock.tarefa.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: ID_TAREFA, status: StatusTarefa.PENDENTE },
+        where: {
+          id: ID_TAREFA,
+          status: { not: StatusTarefa.CONCLUIDA },
+        },
         data: expect.objectContaining({
           titulo: 'Relatório final',
           descricao: 'Evidências',
@@ -646,7 +654,7 @@ describe('TasksService', () => {
       id: ID_TAREFA,
       responsavelId: ID_OUTRO_MENTOR,
       tipoAtividadeId: ID_TIPO_ATIVIDADE,
-      status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.EM_ANDAMENTO,
     });
 
     await expect(
@@ -668,7 +676,7 @@ describe('TasksService', () => {
 
       responsavelId: ID_OUTRO_MENTOR,
 
-      status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.EM_ANDAMENTO,
 
       prazoInicio: null,
 
@@ -716,9 +724,9 @@ describe('TasksService', () => {
     expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
   });
 
-  it('deve concluir uma tarefa pendente', async () => {
+  it('deve concluir uma tarefa em andamento', async () => {
     const tarefaPendente = criarTarefaDetalhe({
-      status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.EM_ANDAMENTO,
 
       concluidoEm: null,
     });
@@ -768,10 +776,67 @@ describe('TasksService', () => {
     expect(resultado.status).toBe('concluida');
   });
 
+  it('deve permitir que o mentor responsável inicie uma tarefa planejada', async () => {
+    const prazoFuturo = new Date(Date.now() + 60 * 60 * 1000);
+    prismaMock.tarefa.findUnique.mockResolvedValueOnce({
+      id: ID_TAREFA,
+      responsavelId: ID_MENTOR,
+      status: StatusTarefa.PLANEJADA,
+      prazoAtual: prazoFuturo,
+    });
+    prismaMock.tarefa.update.mockResolvedValue(
+      criarTarefaDetalhe({
+        status: StatusTarefa.EM_ANDAMENTO,
+        prazoAtual: prazoFuturo,
+      }),
+    );
+
+    const resultado = await service.iniciar(ID_TAREFA, mentor);
+
+    expect(prismaMock.tarefa.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ID_TAREFA, status: StatusTarefa.PLANEJADA },
+        data: {
+          status: StatusTarefa.EM_ANDAMENTO,
+          iniciadoEm: expect.any(Date),
+        },
+      }),
+    );
+    expect(resultado.status).toBe('em_andamento');
+  });
+
+  it('não deve permitir que outro mentor inicie a tarefa', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      responsavelId: ID_OUTRO_MENTOR,
+      status: StatusTarefa.PLANEJADA,
+      prazoAtual: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    await expect(service.iniciar(ID_TAREFA, mentor)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
+  });
+
+  it('deve apresentar como atrasada uma tarefa planejada com prazo vencido', async () => {
+    prismaMock.tarefa.findUnique.mockResolvedValue({
+      id: ID_TAREFA,
+      responsavelId: ID_MENTOR,
+      status: StatusTarefa.PLANEJADA,
+      prazoAtual: new Date(Date.now() - 60 * 60 * 1000),
+    });
+
+    await expect(service.iniciar(ID_TAREFA, mentor)).rejects.toThrow(
+      'Uma tarefa atrasada deve ser reagendada ou concluída.',
+    );
+    expect(prismaMock.tarefa.update).not.toHaveBeenCalled();
+  });
+
   it('deve permitir que a coordenadora adicione comentário em tarefa pendente', async () => {
     prismaMock.tarefa.findUnique.mockResolvedValue({
       id: ID_TAREFA,
-      status: StatusTarefa.PENDENTE,
+      status: StatusTarefa.EM_ANDAMENTO,
     });
     prismaMock.comentarioTarefa.create.mockResolvedValue({
       id: '88888888-8888-4888-8888-888888888888',
@@ -804,7 +869,11 @@ describe('TasksService', () => {
 
   it('não deve permitir que mentor adicione comentário', async () => {
     await expect(
-      service.adicionarComentario(ID_TAREFA, { conteudo: 'Comentário' }, mentor),
+      service.adicionarComentario(
+        ID_TAREFA,
+        { conteudo: 'Comentário' },
+        mentor,
+      ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prismaMock.comentarioTarefa.create).not.toHaveBeenCalled();
   });
@@ -813,7 +882,10 @@ describe('TasksService', () => {
     prismaMock.tarefa.findFirst.mockResolvedValue({ id: ID_TAREFA });
     prismaMock.comentarioTarefa.updateMany.mockResolvedValue({ count: 2 });
 
-    const resultado = await service.marcarComentariosComoLidos(ID_TAREFA, mentor);
+    const resultado = await service.marcarComentariosComoLidos(
+      ID_TAREFA,
+      mentor,
+    );
 
     expect(prismaMock.comentarioTarefa.updateMany).toHaveBeenCalledWith({
       where: { tarefaId: ID_TAREFA, lidoEm: null },

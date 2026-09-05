@@ -19,7 +19,7 @@ import { ListarTarefasQueryDto } from './dto/listar-tarefas-query.dto';
 import { ReagendarTarefaDto } from './dto/reagendar-tarefa.dto';
 import { CriarComentarioTarefaDto } from './dto/criar-comentario-tarefa.dto';
 import { TasksService } from './tasks.service';
-import {ApiTags,} from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 
 import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 
@@ -27,10 +27,7 @@ import { ApiAutenticado } from '../common/decorators/api-autenticado.decorator';
 @ApiAutenticado()
 @Controller('tarefas')
 export class TasksController {
-  constructor(
-    private readonly tasksService:
-      TasksService,
-  ) { }
+  constructor(private readonly tasksService: TasksService) {}
 
   @Get()
   listar(
@@ -40,10 +37,7 @@ export class TasksController {
     @UsuarioAtual()
     usuario: UsuarioAutenticado,
   ) {
-    return this.tasksService.listar(
-      query,
-      usuario,
-    );
+    return this.tasksService.listar(query, usuario);
   }
 
   @Post()
@@ -55,10 +49,7 @@ export class TasksController {
     @UsuarioAtual()
     usuario: UsuarioAutenticado,
   ) {
-    return this.tasksService.criar(
-      dto,
-      usuario,
-    );
+    return this.tasksService.criar(dto, usuario);
   }
 
   @Get(':tarefaId')
@@ -74,10 +65,7 @@ export class TasksController {
     @UsuarioAtual()
     usuario: UsuarioAutenticado,
   ) {
-    return this.tasksService.buscarPorId(
-      tarefaId,
-      usuario,
-    );
+    return this.tasksService.buscarPorId(tarefaId, usuario);
   }
 
   @Get('comentarios/nao-lidos/quantidade')
@@ -128,11 +116,7 @@ export class TasksController {
     @UsuarioAtual()
     usuario: UsuarioAutenticado,
   ) {
-    return this.tasksService.reagendar(
-      tarefaId,
-      dto,
-      usuario,
-    );
+    return this.tasksService.reagendar(tarefaId, dto, usuario);
   }
 
   @Post(':tarefaId/concluir')
@@ -149,10 +133,15 @@ export class TasksController {
     @UsuarioAtual()
     usuario: UsuarioAutenticado,
   ) {
-    return this.tasksService.concluir(
-      tarefaId,
-      usuario,
-    );
+    return this.tasksService.concluir(tarefaId, usuario);
+  }
+
+  @Post(':tarefaId/iniciar')
+  @HttpCode(HttpStatus.OK)
+  iniciar(
+    @Param('tarefaId', new ParseUUIDPipe({ version: '4' })) tarefaId: string,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.tasksService.iniciar(tarefaId, usuario);
   }
 }
-
