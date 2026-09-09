@@ -1,7 +1,7 @@
 import { sanitizeTaskDescription } from './task-description';
 
 describe('sanitizeTaskDescription', () => {
-  it('preserva somente a formataÃ§Ã£o permitida', () => {
+  it('preserva somente a formatação permitida', () => {
     expect(
       sanitizeTaskDescription(
         '<p>Texto <strong>importante</strong> <em>agora</em></p><ul><li>Item</li></ul>',
@@ -11,7 +11,7 @@ describe('sanitizeTaskDescription', () => {
     );
   });
 
-  it('remove scripts, atributos e tags nÃ£o permitidas', () => {
+  it('remove scripts, atributos e tags não permitidas', () => {
     expect(
       sanitizeTaskDescription(
         '<p class="x" onclick="alert(1)">Seguro<img src=x onerror=alert(1)></p><script>alert(1)</script>',
@@ -19,13 +19,13 @@ describe('sanitizeTaskDescription', () => {
     ).toBe('<p>Seguro</p>');
   });
 
-  it('mantÃ©m descriÃ§Ãµes antigas em texto simples', () => {
+  it('mantém descrições antigas em texto simples', () => {
     expect(sanitizeTaskDescription('Primeira linha\nSegunda linha')).toBe(
       'Primeira linha\nSegunda linha',
     );
   });
 
-  it('normaliza conteÃºdo vazio como nulo', () => {
+  it('normaliza conteúdo vazio como nulo', () => {
     expect(sanitizeTaskDescription('<p><br></p>')).toBeNull();
   });
 });

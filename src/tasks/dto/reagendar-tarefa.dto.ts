@@ -22,7 +22,7 @@ export class ReagendarTarefaDto {
       ? value.trim()
       : value,
   )
-  @IsString()
+  @IsString({ message: 'A justificativa deve ser um texto válido.' })
   @MaxLength(2000)
   justificativa?: string;
 }

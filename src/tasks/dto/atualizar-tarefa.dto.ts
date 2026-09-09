@@ -17,7 +17,7 @@ export class AtualizarTarefaDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value,
   )
-  @IsString()
+  @IsString({ message: 'O título deve ser um texto válido.' })
   @MinLength(2, { message: 'O título deve ter pelo menos 2 caracteres.' })
   @MaxLength(200, { message: 'O título deve ter no máximo 200 caracteres.' })
   titulo!: string;
@@ -26,14 +26,14 @@ export class AtualizarTarefaDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  @IsString()
+  @IsString({ message: 'As observações devem ser um texto válido.' })
   @MaxLength(50000, {
-    message: 'A descriÃ§Ã£o formatada deve ter no mÃ¡ximo 50.000 caracteres.',
+    message: 'As observações formatadas devem ter no máximo 50.000 caracteres.',
   })
   descricao?: string;
 
   @IsOptional()
-  @IsArray()
+  @IsArray({ message: 'Os links devem ser enviados em uma lista.' })
   @ArrayMaxSize(20, { message: 'Uma tarefa pode possuir no máximo 20 links.' })
   @IsUrl(
     { protocols: ['http', 'https'], require_protocol: true },
