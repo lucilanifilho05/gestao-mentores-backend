@@ -28,4 +28,34 @@ describe('sanitizeTaskDescription', () => {
   it('normaliza conteúdo vazio como nulo', () => {
     expect(sanitizeTaskDescription('<p><br></p>')).toBeNull();
   });
+
+  it('preserva imagem HTTPS com texto alternativo', () => {
+    const resultado = sanitizeTaskDescription(
+      '<img src="https://exemplo.com/imagem.png" alt="Descrição da imagem">',
+    );
+
+    expect(resultado).toContain('src="https://exemplo.com/imagem.png"');
+    expect(resultado).toContain('alt="Descrição da imagem"');
+  });
+
+  it('remove imagens sem texto alternativo ou com protocolo inseguro', () => {
+    expect(
+      sanitizeTaskDescription(
+        '<img src="https://exemplo.com/sem-alt.png"><img src="data:image/png;base64,abc" alt="Imagem"><img src="javascript:alert(1)" alt="Imagem">',
+      ),
+    ).toBeNull();
+  });
+
+  it('limita as observações a cinco imagens', () => {
+    const imagens = Array.from(
+      { length: 7 },
+      (_, index) =>
+        `<img src="https://exemplo.com/${index}.png" alt="Imagem ${index}">`,
+    ).join('');
+
+    const resultado = sanitizeTaskDescription(imagens) ?? '';
+
+    expect(resultado.match(/<img\b/g)).toHaveLength(5);
+    expect(resultado).not.toContain('https://exemplo.com/5.png');
+  });
 });
