@@ -8,7 +8,12 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Test, type TestingModule } from '@nestjs/testing';
 
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
-import { EscopoTarefa, Papel, StatusTarefa } from '../generated/prisma/client';
+import {
+  EscopoTarefa,
+  Papel,
+  StatusProjeto,
+  StatusTarefa,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TasksService } from './tasks.service';
 
@@ -581,6 +586,16 @@ describe('TasksService', () => {
 
     expect(prismaMock.usuario.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: ID_MENTOR } }),
+    );
+    expect(prismaMock.projeto.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: ID_PROJETO,
+          status: {
+            in: [StatusProjeto.PLANEJAMENTO, StatusProjeto.EM_ANDAMENTO],
+          },
+        },
+      }),
     );
     expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
       expect.objectContaining({

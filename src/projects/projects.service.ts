@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { UsuarioAutenticado } from '../auth/types/auth.types';
-import { Papel, StatusProjeto, StatusTarefa } from '../generated/prisma/client';
+import { StatusProjeto, StatusTarefa } from '../generated/prisma/client';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CriarProjetoDto } from './dto/criar-projeto.dto';
@@ -32,14 +32,11 @@ const projetoSelect = {
 @Injectable()
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
-  async listar(query: ListarProjetosQueryDto, usuario: UsuarioAutenticado) {
+  async listar(query: ListarProjetosQueryDto, _usuario: UsuarioAutenticado) {
     const pagina = query.pagina ?? 1;
     const limite = query.limite ?? 20;
     const where: Prisma.ProjetoWhereInput = {
       ...(query.status ? { status: this.converterStatus(query.status) } : {}),
-      ...(usuario.papel === Papel.MENTOR
-        ? { tarefas: { some: { responsavelId: usuario.id } } }
-        : {}),
     };
     const [data, total] = await this.prisma.$transaction([
       this.prisma.projeto.findMany({
@@ -56,13 +53,10 @@ export class ProjectsService {
       meta: { pagina, limite, total, totalPaginas: Math.ceil(total / limite) },
     };
   }
-  async buscarPorId(id: string, usuario: UsuarioAutenticado) {
+  async buscarPorId(id: string, _usuario: UsuarioAutenticado) {
     const projeto = await this.prisma.projeto.findFirst({
       where: {
         id,
-        ...(usuario.papel === Papel.MENTOR
-          ? { tarefas: { some: { responsavelId: usuario.id } } }
-          : {}),
       },
       select: projetoSelect,
     });

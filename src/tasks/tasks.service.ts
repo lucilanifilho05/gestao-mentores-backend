@@ -445,9 +445,6 @@ export class TasksService {
         status: {
           in: [StatusProjeto.PLANEJAMENTO, StatusProjeto.EM_ANDAMENTO],
         },
-        ...(usuario.papel === Papel.MENTOR
-          ? { tarefas: { some: { responsavelId: usuario.id } } }
-          : {}),
       },
       select: {
         id: true,
