@@ -67,6 +67,16 @@ export class CriarTarefaDto {
   responsavelIds?: string[];
 
   @IsOptional()
+  @IsArray({ message: 'Os mentores de apoio devem ser enviados em uma lista.' })
+  @ArrayMaxSize(20, { message: 'Selecione no máximo 20 mentores de apoio.' })
+  @ArrayUnique({ message: 'A lista de mentores de apoio não deve conter duplicados.' })
+  @IsUUID('4', {
+    each: true,
+    message: 'Cada mentor de apoio deve possuir um UUID válido.',
+  })
+  participanteIds?: string[];
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )

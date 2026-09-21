@@ -101,6 +101,14 @@ const tarefaResumoSelect = {
     take: 1,
     select: { id: true, lidoEm: true },
   },
+  participantes: {
+    orderBy: { criadoEm: 'asc' },
+    select: {
+      criadoEm: true,
+      visualizadoEm: true,
+      mentor: { select: { id: true, nome: true, email: true } },
+    },
+  },
 } satisfies Prisma.TarefaSelect;
 
 const tarefaDetalheSelect = {
@@ -182,6 +190,7 @@ export class TasksService {
     const prazoMinimo =
       filtraAbertasNoPrazo && (!inicio || agora > inicio) ? agora : inicio;
 
+    const vinculo = query.vinculo ?? 'minhas';
     const where: Prisma.TarefaWhereInput = {
       ...(query.numero ? { numero: query.numero } : {}),
       ...(query.projetoId ? { projetoId: query.projetoId } : {}),
@@ -190,9 +199,16 @@ export class TasksService {
        * atribuídas a ele, ignorando responsavelId.
        */
       ...(usuario.papel === Papel.MENTOR
-        ? {
-            responsavelId: usuario.id,
-          }
+        ? vinculo === 'apoio'
+          ? { participantes: { some: { mentorId: usuario.id } } }
+          : vinculo === 'todas'
+            ? {
+                OR: [
+                  { responsavelId: usuario.id },
+                  { participantes: { some: { mentorId: usuario.id } } },
+                ],
+              }
+            : { responsavelId: usuario.id }
         : query.responsavelId
           ? {
               responsavelId: query.responsavelId,
@@ -255,7 +271,7 @@ export class TasksService {
     ]);
 
     return {
-      data: tarefas.map((tarefa) => this.formatarResumo(tarefa)),
+      data: tarefas.map((tarefa) => this.formatarResumo(tarefa, usuario)),
 
       meta: {
         pagina,
@@ -273,7 +289,10 @@ export class TasksService {
 
         ...(usuario.papel === Papel.MENTOR
           ? {
-              responsavelId: usuario.id,
+              OR: [
+                { responsavelId: usuario.id },
+                { participantes: { some: { mentorId: usuario.id } } },
+              ],
             }
           : {}),
       },
@@ -285,7 +304,17 @@ export class TasksService {
       throw new NotFoundException('Tarefa não encontrada ou não acessível.');
     }
 
-    return this.formatarDetalhe(tarefa);
+    if (
+      usuario.papel === Papel.MENTOR &&
+      tarefa.responsavelId !== usuario.id
+    ) {
+      await this.prisma.tarefaParticipante.updateMany({
+        where: { tarefaId, mentorId: usuario.id, visualizadoEm: null },
+        data: { visualizadoEm: new Date() },
+      });
+    }
+
+    return this.formatarDetalhe(tarefa, usuario);
   }
 
   async adicionarComentario(
@@ -386,6 +415,11 @@ export class TasksService {
     const escopo = this.converterEscopo(dto.escopo);
 
     if (escopo === EscopoTarefa.EVENTO_MACRO) {
+      if (dto.participanteIds?.length) {
+        throw new BadRequestException(
+          'Mentores de apoio não podem ser informados em tarefas de evento_macro.',
+        );
+      }
       return this.criarParaMentoresSelecionados(
         dto,
         usuario,
@@ -434,6 +468,11 @@ export class TasksService {
         'O responsável pela tarefa deve ser um mentor.',
       );
     }
+
+    const participanteIds = await this.validarParticipantes(
+      dto.participanteIds,
+      responsavelId,
+    );
 
     /*
      * Coordenadora cria para qualquer mentor.
@@ -500,6 +539,11 @@ export class TasksService {
         iniciadoEm: null,
         concluidoEm: null,
         links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
+        participantes: participanteIds.length
+          ? {
+              create: participanteIds.map((mentorId) => ({ mentorId })),
+            }
+          : undefined,
       },
 
       select: tarefaDetalheSelect,
@@ -510,7 +554,7 @@ export class TasksService {
       data: { status: StatusProjeto.EM_ANDAMENTO },
     });
 
-    return this.formatarDetalhe(tarefa);
+    return this.formatarDetalhe(tarefa, usuario);
   }
 
   private async criarParaMentoresSelecionados(
@@ -615,7 +659,7 @@ export class TasksService {
     return {
       quantidadeCriada: tarefas.length,
       titulo: dto.titulo.trim().replace(/\s+/g, ' '),
-      tarefas: tarefas.map((tarefa) => this.formatarDetalhe(tarefa)),
+      tarefas: tarefas.map((tarefa) => this.formatarDetalhe(tarefa, usuario)),
     };
   }
 
@@ -679,7 +723,7 @@ export class TasksService {
         select: tarefaDetalheSelect,
       });
 
-      return this.formatarDetalhe(atualizada);
+      return this.formatarDetalhe(atualizada, usuario);
     } catch (erro: unknown) {
       if (
         typeof erro === 'object' &&
@@ -780,7 +824,7 @@ export class TasksService {
         select: tarefaDetalheSelect,
       });
 
-      return this.formatarDetalhe(atualizada);
+      return this.formatarDetalhe(atualizada, usuario);
     });
   }
 
@@ -813,7 +857,7 @@ export class TasksService {
        * devolve o estado atual.
        */
       if (tarefa.status === StatusTarefa.CONCLUIDA) {
-        return this.formatarDetalhe(tarefa);
+        return this.formatarDetalhe(tarefa, usuario);
       }
 
       const atualizada = await transaction.tarefa.update({
@@ -830,7 +874,7 @@ export class TasksService {
         select: tarefaDetalheSelect,
       });
 
-      return this.formatarDetalhe(atualizada);
+      return this.formatarDetalhe(atualizada, usuario);
     });
   }
 
@@ -866,7 +910,7 @@ export class TasksService {
         select: tarefaDetalheSelect,
       });
       if (!atual) throw new NotFoundException('Tarefa não encontrada.');
-      return this.formatarDetalhe(atual);
+      return this.formatarDetalhe(atual, usuario);
     }
     if (tarefa.prazoAtual.getTime() < Date.now()) {
       throw new ConflictException(
@@ -883,7 +927,7 @@ export class TasksService {
         },
         select: tarefaDetalheSelect,
       });
-      return this.formatarDetalhe(atualizada);
+      return this.formatarDetalhe(atualizada, usuario);
     } catch (erro: unknown) {
       if (
         typeof erro === 'object' &&
@@ -1043,6 +1087,37 @@ export class TasksService {
     }
   }
 
+  private async validarParticipantes(
+    participanteIds: string[] | undefined,
+    responsavelId: string,
+  ): Promise<string[]> {
+    const ids = [...new Set(participanteIds ?? [])];
+    if (ids.length === 0) return [];
+
+    if (ids.includes(responsavelId)) {
+      throw new BadRequestException(
+        'O responsável pela tarefa não pode ser marcado também como apoio.',
+      );
+    }
+
+    const mentores = await this.prisma.usuario.findMany({
+      where: {
+        id: { in: ids },
+        papel: Papel.MENTOR,
+        ativo: true,
+      },
+      select: { id: true },
+    });
+
+    if (mentores.length !== ids.length) {
+      throw new BadRequestException(
+        'Um ou mais mentores de apoio não existem ou estão inativos.',
+      );
+    }
+
+    return ids;
+  }
+
   private converterEscopo(valor: EscopoTarefaEntrada): EscopoTarefa {
     switch (valor) {
       case 'curso':
@@ -1107,7 +1182,22 @@ export class TasksService {
     }
   }
 
-  private formatarResumo(tarefa: TarefaResumo) {
+  private formatarResumo(
+    tarefa: TarefaResumo,
+    usuario: UsuarioAutenticado,
+  ) {
+    const participanteAtual = tarefa.participantes.find(
+      (participante) => participante.mentor.id === usuario.id,
+    );
+    const tipoVinculo =
+      usuario.papel === Papel.COORDENADORA
+        ? 'gestao'
+        : tarefa.responsavelId === usuario.id
+          ? 'responsavel'
+          : participanteAtual
+            ? 'apoio'
+            : 'nenhum';
+
     return {
       id: tarefa.id,
       numero: tarefa.numero,
@@ -1129,6 +1219,18 @@ export class TasksService {
       responsavelId: tarefa.responsavelId,
 
       responsavel: tarefa.responsavel,
+
+      participantes: tarefa.participantes.map((participante) => ({
+        ...participante.mentor,
+        criadoEm: participante.criadoEm,
+      })),
+      tipoVinculo,
+      podeAlterar:
+        usuario.papel === Papel.COORDENADORA ||
+        tarefa.responsavelId === usuario.id,
+      marcacaoVisualizada: participanteAtual
+        ? participanteAtual.visualizadoEm !== null
+        : true,
 
       escopo: this.serializarEscopo(tarefa.escopo),
 
@@ -1154,15 +1256,18 @@ export class TasksService {
 
       quantidadeReagendamentos: tarefa._count.reagendamentos,
       quantidadeComentarios: tarefa._count.comentarios,
-      possuiComentarioNaoLido: tarefa.comentarios.some(
-        (comentario) => comentario.lidoEm === null,
-      ),
+      possuiComentarioNaoLido:
+        tipoVinculo === 'responsavel' &&
+        tarefa.comentarios.some((comentario) => comentario.lidoEm === null),
     };
   }
 
-  private formatarDetalhe(tarefa: TarefaDetalhe) {
+  private formatarDetalhe(
+    tarefa: TarefaDetalhe,
+    usuario: UsuarioAutenticado,
+  ) {
     return {
-      ...this.formatarResumo(tarefa),
+      ...this.formatarResumo(tarefa, usuario),
 
       reagendamentos: tarefa.reagendamentos.map((reagendamento) => ({
         id: reagendamento.id,

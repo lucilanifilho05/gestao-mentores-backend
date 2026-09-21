@@ -53,6 +53,11 @@ interface OpcoesTarefa {
   cursoId?: string | null;
   concluidoEm?: Date | null;
   prazoAtual?: Date;
+  participantes?: Array<{
+    criadoEm: Date;
+    visualizadoEm: Date | null;
+    mentor: { id: string; nome: string; email: string };
+  }>;
 }
 
 function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
@@ -133,6 +138,7 @@ function criarTarefaDetalhe(opcoes: OpcoesTarefa = {}) {
 
     turma: null,
     comentarios: [],
+    participantes: opcoes.participantes ?? [],
 
     _count: {
       reagendamentos: 0,
@@ -181,6 +187,9 @@ const prismaMock = {
     create: criarMockAssincrono(),
     updateMany: criarMockAssincrono(),
     count: criarMockAssincrono(),
+  },
+  tarefaParticipante: {
+    updateMany: criarMockAssincrono(),
   },
 
   projeto: {
@@ -336,6 +345,76 @@ describe('TasksService', () => {
     expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
+  it('deve listar tarefas proprias e de apoio quando o mentor solicitar todas', async () => {
+    prismaMock.tarefa.findMany.mockResolvedValue([]);
+    prismaMock.tarefa.count.mockResolvedValue(0);
+
+    await service.listar({ vinculo: 'todas' }, mentor);
+
+    const filtroVinculo = {
+      OR: [
+        { responsavelId: ID_MENTOR },
+        { participantes: { some: { mentorId: ID_MENTOR } } },
+      ],
+    };
+    expect(prismaMock.tarefa.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining(filtroVinculo),
+      }),
+    );
+    expect(prismaMock.tarefa.count).toHaveBeenCalledWith({
+      where: expect.objectContaining(filtroVinculo),
+    });
+  });
+
+  it('deve permitir leitura ao mentor de apoio sem conceder alteracao', async () => {
+    prismaMock.tarefa.findFirst.mockResolvedValue(
+      criarTarefaDetalhe({
+        responsavelId: ID_OUTRO_MENTOR,
+        participantes: [
+          {
+            criadoEm: new Date('2026-08-01T12:00:00.000Z'),
+            visualizadoEm: null,
+            mentor: {
+              id: ID_MENTOR,
+              nome: 'Mentor',
+              email: 'mentor@exemplo.com',
+            },
+          },
+        ],
+      }),
+    );
+    prismaMock.tarefaParticipante.updateMany.mockResolvedValue({ count: 1 });
+
+    const resultado = await service.buscarPorId(ID_TAREFA, mentor);
+
+    expect(prismaMock.tarefa.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: ID_TAREFA,
+          OR: [
+            { responsavelId: ID_MENTOR },
+            { participantes: { some: { mentorId: ID_MENTOR } } },
+          ],
+        }),
+      }),
+    );
+    expect(prismaMock.tarefaParticipante.updateMany).toHaveBeenCalledWith({
+      where: {
+        tarefaId: ID_TAREFA,
+        mentorId: ID_MENTOR,
+        visualizadoEm: null,
+      },
+      data: { visualizadoEm: expect.any(Date) },
+    });
+    expect(resultado).toEqual(
+      expect.objectContaining({
+        tipoVinculo: 'apoio',
+        podeAlterar: false,
+      }),
+    );
+  });
+
   it('deve criar uma tarefa macro para cada mentor ativo', async () => {
     prismaMock.tipoAtividade.findUnique.mockResolvedValue({
       id: ID_TIPO_ATIVIDADE,
@@ -445,7 +524,6 @@ describe('TasksService', () => {
       ativo: true,
       papel: Papel.MENTOR,
     });
-
     prismaMock.projeto.findFirst.mockResolvedValue(null);
 
     await expect(
@@ -565,6 +643,7 @@ describe('TasksService', () => {
       ativo: true,
       papel: Papel.MENTOR,
     });
+    prismaMock.usuario.findMany.mockResolvedValue([{ id: ID_OUTRO_MENTOR }]);
     prismaMock.curso.findFirst.mockResolvedValue({ id: ID_CURSO });
     prismaMock.cursoMentor.findFirst.mockResolvedValue({ cursoId: ID_CURSO });
     prismaMock.tarefa.create.mockResolvedValue(
@@ -577,6 +656,7 @@ describe('TasksService', () => {
         projetoId: ID_PROJETO,
         titulo: 'Minha tarefa',
         responsavelId: ID_OUTRO_MENTOR,
+        participanteIds: [ID_OUTRO_MENTOR],
         escopo: 'curso',
         cursoId: ID_CURSO,
         prazoAtual: '2026-08-20T18:00:00-03:00',
@@ -599,7 +679,12 @@ describe('TasksService', () => {
     );
     expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ responsavelId: ID_MENTOR }),
+        data: expect.objectContaining({
+          responsavelId: ID_MENTOR,
+          participantes: {
+            create: [{ mentorId: ID_OUTRO_MENTOR }],
+          },
+        }),
       }),
     );
   });

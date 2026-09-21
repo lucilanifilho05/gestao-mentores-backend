@@ -19,6 +19,8 @@ export const STATUS_TAREFA = [
 ] as const;
 
 export type StatusTarefaEntrada = (typeof STATUS_TAREFA)[number];
+export const VINCULOS_TAREFA = ['minhas', 'apoio', 'todas'] as const;
+export type VinculoTarefaEntrada = (typeof VINCULOS_TAREFA)[number];
 
 export class ListarTarefasQueryDto {
   @IsOptional()
@@ -72,6 +74,15 @@ export class ListarTarefasQueryDto {
     message: 'escopo deve ser curso, turma ou evento_macro.',
   })
   escopo?: EscopoTarefaEntrada;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsIn([...VINCULOS_TAREFA], {
+    message: 'vinculo deve ser minhas, apoio ou todas.',
+  })
+  vinculo?: VinculoTarefaEntrada;
 
   @IsOptional()
   @Type(() => Number)
