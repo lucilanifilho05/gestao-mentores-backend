@@ -22,6 +22,7 @@ const ID_COORDENADORA = '11111111-1111-4111-8111-111111111111';
 const ID_MENTOR = '22222222-2222-4222-8222-222222222222';
 
 const ID_OUTRO_MENTOR = '33333333-3333-4333-8333-333333333333';
+const ID_OUTRA_COORDENADORA = '88888888-8888-4888-8888-888888888888';
 
 const ID_TIPO_ATIVIDADE = '44444444-4444-4444-8444-444444444444';
 
@@ -631,6 +632,97 @@ describe('TasksService', () => {
     );
 
     expect(resultado.escopo).toBe('curso');
+  });
+
+  it('deve permitir que a coordenadora atribua tarefa a si com mentor de apoio', async () => {
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_COORDENADORA,
+      ativo: true,
+      papel: Papel.COORDENADORA,
+    });
+    prismaMock.usuario.findMany.mockResolvedValue([{ id: ID_MENTOR }]);
+    prismaMock.curso.findFirst.mockResolvedValue({ id: ID_CURSO });
+    prismaMock.tarefa.create.mockResolvedValue(
+      criarTarefaDetalhe({
+        responsavelId: ID_COORDENADORA,
+        escopo: EscopoTarefa.CURSO,
+        cursoId: ID_CURSO,
+        participantes: [
+          {
+            criadoEm: new Date('2026-08-01T12:00:00.000Z'),
+            visualizadoEm: null,
+            mentor: {
+              id: ID_MENTOR,
+              nome: 'Mentor',
+              email: 'mentor@exemplo.com',
+            },
+          },
+        ],
+      }),
+    );
+
+    const resultado = await service.criar(
+      {
+        tipoAtividadeId: ID_TIPO_ATIVIDADE,
+        projetoId: ID_PROJETO,
+        titulo: 'Acompanhamento da coordenacao',
+        responsavelId: ID_COORDENADORA,
+        participanteIds: [ID_MENTOR],
+        escopo: 'curso',
+        cursoId: ID_CURSO,
+        prazoAtual: '2026-08-20T18:00:00-03:00',
+      },
+      coordenadora,
+    );
+
+    expect(prismaMock.cursoMentor.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.tarefa.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          responsavelId: ID_COORDENADORA,
+          participantes: { create: [{ mentorId: ID_MENTOR }] },
+        }),
+      }),
+    );
+    expect(resultado).toEqual(
+      expect.objectContaining({
+        tipoVinculo: 'responsavel',
+        podeAlterar: true,
+      }),
+    );
+  });
+
+  it('nao deve permitir atribuir tarefa a outra coordenadora', async () => {
+    prismaMock.tipoAtividade.findUnique.mockResolvedValue({
+      id: ID_TIPO_ATIVIDADE,
+      ativo: true,
+    });
+    prismaMock.usuario.findUnique.mockResolvedValue({
+      id: ID_OUTRA_COORDENADORA,
+      ativo: true,
+      papel: Papel.COORDENADORA,
+    });
+
+    await expect(
+      service.criar(
+        {
+          tipoAtividadeId: ID_TIPO_ATIVIDADE,
+          projetoId: ID_PROJETO,
+          titulo: 'Tarefa indevida',
+          responsavelId: ID_OUTRA_COORDENADORA,
+          escopo: 'curso',
+          cursoId: ID_CURSO,
+          prazoAtual: '2026-08-20T18:00:00-03:00',
+        },
+        coordenadora,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
   });
 
   it('deve atribuir automaticamente ao mentor autenticado', async () => {

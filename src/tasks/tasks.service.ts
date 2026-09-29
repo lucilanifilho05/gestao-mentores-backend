@@ -463,9 +463,14 @@ export class TasksService {
       throw new BadRequestException('O responsável está inativo.');
     }
 
-    if (responsavel.papel !== Papel.MENTOR) {
+    const coordenadoraResponsavel =
+      responsavel.papel === Papel.COORDENADORA &&
+      usuario.papel === Papel.COORDENADORA &&
+      responsavel.id === usuario.id;
+
+    if (responsavel.papel !== Papel.MENTOR && !coordenadoraResponsavel) {
       throw new BadRequestException(
-        'O responsável pela tarefa deve ser um mentor.',
+        'O responsável deve ser um mentor ou a própria coordenadora autenticada.',
       );
     }
 
@@ -509,7 +514,7 @@ export class TasksService {
      * Tarefas de curso ou turma só podem ser
      * atribuídas a mentor vinculado ao curso.
      */
-    if (referencias.cursoId) {
+    if (referencias.cursoId && !coordenadoraResponsavel) {
       await this.validarResponsavelVinculadoAoCurso(
         responsavelId,
         referencias.cursoId,
@@ -1190,10 +1195,10 @@ export class TasksService {
       (participante) => participante.mentor.id === usuario.id,
     );
     const tipoVinculo =
-      usuario.papel === Papel.COORDENADORA
-        ? 'gestao'
-        : tarefa.responsavelId === usuario.id
-          ? 'responsavel'
+      tarefa.responsavelId === usuario.id
+        ? 'responsavel'
+        : usuario.papel === Papel.COORDENADORA
+          ? 'gestao'
           : participanteAtual
             ? 'apoio'
             : 'nenhum';
