@@ -101,13 +101,14 @@ export class CriarTarefaDto {
   })
   turmaId?: string;
 
+  @IsOptional()
   @IsDateString(
     {},
     {
       message: 'prazoInicio deve ser uma data ISO válida.',
     },
   )
-  prazoInicio!: string;
+  prazoInicio?: string;
 
   @IsDateString(
     {},

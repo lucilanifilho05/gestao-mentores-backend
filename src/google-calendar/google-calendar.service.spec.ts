@@ -61,6 +61,7 @@ describe('GoogleCalendarService', () => {
     exchange: jest.Mock;
     identity: jest.Mock;
     createCalendar: jest.Mock;
+    deleteCalendar: jest.Mock;
     refresh: jest.Mock;
     insertEvent: jest.Mock;
     revoke: jest.Mock;
@@ -118,6 +119,7 @@ describe('GoogleCalendarService', () => {
         email_verified: true,
       }),
       createCalendar: jest.fn().mockResolvedValue({ id: 'new-calendar' }),
+      deleteCalendar: jest.fn(),
       refresh: jest.fn().mockResolvedValue({ access_token: 'access' }),
       insertEvent: jest.fn(),
       revoke: jest.fn(),
@@ -201,6 +203,31 @@ describe('GoogleCalendarService', () => {
     db.googleCalendarConnection.findUnique.mockResolvedValue(connection);
     await service.callback('state', 'state', 'code');
     expect(google.createCalendar).not.toHaveBeenCalled();
+  });
+  it('removes a redundant calendar created by a concurrent callback', async () => {
+    authorization();
+    db.googleCalendarConnection.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(connection);
+    await service.callback('state', 'state', 'code');
+    expect(google.deleteCalendar).toHaveBeenCalledWith(
+      'access',
+      'new-calendar',
+    );
+    expect(db.googleCalendarConnection.upsert).toHaveBeenCalledWith(
+      containing({ update: containing({ ativo: true }) }),
+    );
+  });
+  it('removes a newly created calendar when persistence fails', async () => {
+    authorization();
+    db.$transaction.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(service.callback('state', 'state', 'code')).rejects.toThrow(
+      'database unavailable',
+    );
+    expect(google.deleteCalendar).toHaveBeenCalledWith(
+      'access',
+      'new-calendar',
+    );
   });
   it('does not replace a connection with another Google account', async () => {
     authorization();

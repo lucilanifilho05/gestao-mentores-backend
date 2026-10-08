@@ -15,13 +15,13 @@ const tarefaValida = {
 };
 
 describe('CriarTarefaDto', () => {
-  it('rejeita a criação sem início', async () => {
+  it('aceita a criação sem início', async () => {
     const dto = plainToInstance(CriarTarefaDto, {
       ...tarefaValida,
       prazoInicio: undefined,
     });
     const erros = await validate(dto);
-    expect(erros.some((erro) => erro.property === 'prazoInicio')).toBe(true);
+    expect(erros).toHaveLength(0);
   });
   it('aceita a criação sem observações', async () => {
     const dto = plainToInstance(CriarTarefaDto, tarefaValida);

@@ -384,17 +384,17 @@ export class TasksService {
   }
 
   async criar(dto: CriarTarefaDto, usuario: UsuarioAutenticado) {
-    const prazoInicio = new Date(dto.prazoInicio);
+    const prazoInicio = dto.prazoInicio ? new Date(dto.prazoInicio) : null;
 
     const prazoAtual = new Date(dto.prazoAtual);
 
     if (
-      !Number.isFinite(prazoInicio.getTime()) ||
       !Number.isFinite(prazoAtual.getTime()) ||
-      prazoAtual <= prazoInicio
+      (prazoInicio &&
+        (!Number.isFinite(prazoInicio.getTime()) || prazoAtual <= prazoInicio))
     ) {
       throw new BadRequestException(
-        'Informe o início e um prazo final posterior ao início da tarefa.',
+        'Quando informado, o início deve ser anterior ao prazo final da tarefa.',
       );
     }
 

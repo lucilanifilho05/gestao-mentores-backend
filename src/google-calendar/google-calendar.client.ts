@@ -38,6 +38,7 @@ export class GoogleCalendarClient {
           : (body.error?.errors?.[0]?.reason ?? 'unknown');
       throw new GoogleApiError(response.status, reason);
     }
+    if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
 
@@ -88,6 +89,16 @@ export class GoogleCalendarClient {
         timeZone: 'America/Fortaleza',
       }),
     });
+  }
+
+  deleteCalendar(accessToken: string, calendarId: string): Promise<void> {
+    return this.request(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
   }
 
   async insertEvent(

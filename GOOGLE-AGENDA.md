@@ -4,7 +4,7 @@ O login continua sendo email e senha da aplicação. A autorização OAuth serve
 
 ## Comportamento
 
-- Novas tarefas exigem `prazoInicio` e `prazoAtual`, com fim estritamente posterior ao início. A coluna `prazo_inicio` permanece nullable para preservar tarefas antigas.
+- O prazo final continua obrigatório. Quando `prazoInicio` for informado, o fim deve ser estritamente posterior ao início; tarefas sem início continuam válidas, mas não geram evento no Google Agenda.
 - Ao conectar, a aplicação cria um calendário secundário **Gestão de Mentores**, no fuso `America/Fortaleza`. Renovar a conexão da mesma conta reutiliza esse calendário.
 - Tarefas criadas após a conexão são enviadas ao calendário do **responsável**, inclusive quando criadas pela coordenadora. Criações de evento macro geram uma tarefa/evento por responsável conectado. Mentores de apoio não recebem eventos nesta versão.
 - O evento usa exatamente o início e o prazo final da criação, título e número da tarefa. Eventos aparecem como **Disponível**, sem bloquear o intervalo. Não são enviados comentários, links privados ou convidados.
@@ -29,9 +29,9 @@ GOOGLE_TOKEN_ENCRYPTION_KEY=chave-hexadecimal-de-64-caracteres
 
 Gere a chave de criptografia com `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Guarde-a no gerenciador de segredos; não use uma chave JWT nem publique valores reais no repositório. Perder ou trocar essa chave exige reconectar as contas existentes. Não altere a chave sem planejar a migração dos tokens.
 
-5. Execute `npx prisma generate`, `npx prisma migrate deploy` e o build/deploy do backend e frontend. A migração somente adiciona tabelas e não modifica os prazos históricos. O Compose recebe as novas variáveis do ambiente.
+5. Execute `npx prisma generate`, `npx prisma migrate deploy` e o build/deploy do backend e frontend. As migrações adicionam a estrutura da integração e tipam o estado da fila, sem modificar tarefas ou prazos históricos. O Compose recebe as novas variáveis do ambiente.
 6. Use HTTPS em produção. Frontend e API devem estar no mesmo site (por exemplo, `app.exemplo.com` e `api.exemplo.com`), e `CORS_ORIGINS` deve conter o endereço exato do frontend. Isso permite definir o cookie HttpOnly usado para vincular o consentimento ao navegador e enviá-lo no retorno do Google. Em desenvolvimento, use `localhost` em ambos, com portas diferentes.
-7. Entre normalmente no sistema, abra **Minha conta** e conecte o Google Agenda. Crie uma tarefa com início e fim distintos, atribuída ao usuário conectado. Verifique o evento no calendário criado e o contador de envios na página da conta.
+7. Entre normalmente no sistema, abra **Minha conta** e conecte o Google Agenda. Crie uma tarefa com início e fim distintos, atribuída ao usuário conectado. Verifique o evento no calendário criado e o contador de envios na página da conta. Tarefas sem início permanecem apenas na aplicação.
 
 Permissões solicitadas: `calendar.app.created`, `openid` e `email`. As duas últimas identificam a conta autorizada; não criam login Google nem sessões locais.
 

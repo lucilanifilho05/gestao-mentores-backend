@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { Prisma } from '../generated/prisma/client';
+import { EstadoEventoGoogle, type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CALENDAR_SCOPE,
@@ -80,10 +80,10 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
       conectado: connection?.ativo ?? false,
       email: connection?.email ?? null,
       pendentes: counts
-        .filter((row) => row.estado === 'PENDENTE')
+        .filter((row) => row.estado === EstadoEventoGoogle.PENDENTE)
         .reduce((sum, row) => sum + row._count, 0),
       falhas: counts
-        .filter((row) => row.estado === 'FALHA')
+        .filter((row) => row.estado === EstadoEventoGoogle.FALHA)
         .reduce((sum, row) => sum + row._count, 0),
     };
   }
@@ -166,43 +166,80 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
     const identity = await this.google.identity(tokens.access_token);
     if (!identity.sub || !identity.email || !identity.email_verified)
       throw new BadRequestException('Conta Google inválida.');
-    await this.prisma.$transaction(
-      async (tx) => {
-        // Serialize connections for one local user across backend replicas.
-        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${authorization.usuarioId}))`;
-        const user = await tx.usuario.findUniqueOrThrow({
-          where: { id: authorization.usuarioId },
-        });
-        if (!user.ativo || user.tokenVersion !== authorization.tokenVersion)
-          throw new BadRequestException('Autorização expirada.');
-        const existing = await tx.googleCalendarConnection.findUnique({
-          where: { usuarioId: authorization.usuarioId },
-        });
-        if (existing && existing.googleSubject !== identity.sub)
-          throw new BadRequestException(
-            'Desconecte a conta atual antes de conectar outra.',
-          );
-        const calendarId =
-          existing?.calendarId ??
-          (await this.google.createCalendar(tokens.access_token)).id;
-        await tx.googleCalendarConnection.upsert({
-          where: { usuarioId: authorization.usuarioId },
-          create: {
-            usuarioId: authorization.usuarioId,
-            googleSubject: identity.sub,
-            email: identity.email,
-            refreshToken: encryptSecret(tokens.refresh_token!, this.key()),
-            calendarId,
-          },
-          update: {
-            email: identity.email,
-            refreshToken: encryptSecret(tokens.refresh_token!, this.key()),
-            ativo: true,
-          },
-        });
-      },
-      { timeout: 45000 },
-    );
+    const current = await this.prisma.googleCalendarConnection.findUnique({
+      where: { usuarioId: authorization.usuarioId },
+    });
+    if (current && current.googleSubject !== identity.sub)
+      throw new BadRequestException(
+        'Desconecte a conta atual antes de conectar outra.',
+      );
+
+    // Keep Google network calls outside database transactions. If another
+    // callback wins the race, the redundant calendar is removed afterwards.
+    const createdCalendarId = current
+      ? undefined
+      : (await this.google.createCalendar(tokens.access_token)).id;
+    try {
+      const usedCreatedCalendar = await this.prisma.$transaction(
+        async (tx) => {
+          // Serialize connections for one local user across backend replicas.
+          await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${authorization.usuarioId}))`;
+          const user = await tx.usuario.findUniqueOrThrow({
+            where: { id: authorization.usuarioId },
+          });
+          if (!user.ativo || user.tokenVersion !== authorization.tokenVersion)
+            throw new BadRequestException('Autorização expirada.');
+          const existing = await tx.googleCalendarConnection.findUnique({
+            where: { usuarioId: authorization.usuarioId },
+          });
+          if (existing && existing.googleSubject !== identity.sub)
+            throw new BadRequestException(
+              'Desconecte a conta atual antes de conectar outra.',
+            );
+          if (!existing && !createdCalendarId)
+            throw new ServiceUnavailableException(
+              'A conexão foi alterada durante a autorização. Tente novamente.',
+            );
+          const calendarId = existing?.calendarId ?? createdCalendarId!;
+          await tx.googleCalendarConnection.upsert({
+            where: { usuarioId: authorization.usuarioId },
+            create: {
+              usuarioId: authorization.usuarioId,
+              googleSubject: identity.sub,
+              email: identity.email,
+              refreshToken: encryptSecret(tokens.refresh_token!, this.key()),
+              calendarId,
+            },
+            update: {
+              email: identity.email,
+              refreshToken: encryptSecret(tokens.refresh_token!, this.key()),
+              ativo: true,
+            },
+          });
+          return !existing;
+        },
+        { timeout: 10000 },
+      );
+      if (createdCalendarId && !usedCreatedCalendar)
+        await this.removeUnusedCalendar(tokens.access_token, createdCalendarId);
+    } catch (error) {
+      if (createdCalendarId)
+        await this.removeUnusedCalendar(tokens.access_token, createdCalendarId);
+      throw error;
+    }
+  }
+
+  private async removeUnusedCalendar(
+    accessToken: string,
+    calendarId: string,
+  ): Promise<void> {
+    try {
+      await this.google.deleteCalendar(accessToken, calendarId);
+    } catch {
+      this.logger.warn(
+        'Não foi possível remover um calendário criado durante uma autorização incompleta.',
+      );
+    }
   }
 
   callbackUrl(result: 'conectado' | 'erro'): string {
@@ -278,9 +315,12 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
   async retry(usuarioId: string): Promise<void> {
     this.requireEnabled();
     await this.prisma.googleCalendarEvent.updateMany({
-      where: { estado: 'FALHA', conexao: { usuarioId, ativo: true } },
+      where: {
+        estado: EstadoEventoGoogle.FALHA,
+        conexao: { usuarioId, ativo: true },
+      },
       data: {
-        estado: 'PENDENTE',
+        estado: EstadoEventoGoogle.PENDENTE,
         tentativas: 0,
         proximaEm: new Date(),
         leaseToken: null,
@@ -310,7 +350,7 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
     try {
       const jobs = await this.prisma.googleCalendarEvent.findMany({
         where: {
-          estado: 'PENDENTE',
+          estado: EstadoEventoGoogle.PENDENTE,
           proximaEm: { lte: new Date() },
           conexao: { ativo: true, usuario: { ativo: true } },
         },
@@ -323,7 +363,7 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
         const claim = await this.prisma.googleCalendarEvent.updateMany({
           where: {
             id: job.id,
-            estado: 'PENDENTE',
+            estado: EstadoEventoGoogle.PENDENTE,
             proximaEm: { lte: new Date() },
           },
           data: {
@@ -364,7 +404,7 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
           await this.prisma.googleCalendarEvent.updateMany({
             where: { id: job.id, leaseToken },
             data: {
-              estado: 'SINCRONIZADO',
+              estado: EstadoEventoGoogle.SINCRONIZADO,
               sincronizadoEm: new Date(),
               leaseToken: null,
               erro: null,
@@ -394,7 +434,9 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
           await this.prisma.googleCalendarEvent.updateMany({
             where: { id: job.id, leaseToken },
             data: {
-              estado: failed ? 'FALHA' : 'PENDENTE',
+              estado: failed
+                ? EstadoEventoGoogle.FALHA
+                : EstadoEventoGoogle.PENDENTE,
               leaseToken: null,
               proximaEm: new Date(
                 Date.now() + Math.min(3600_000, 15000 * 2 ** job.tentativas),

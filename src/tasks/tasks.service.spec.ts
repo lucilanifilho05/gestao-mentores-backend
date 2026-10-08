@@ -268,7 +268,6 @@ describe('TasksService', () => {
   });
 
   it.each([
-    ['início ausente', undefined],
     ['início igual ao fim', '2026-08-15T18:00:00-03:00'],
     ['início posterior ao fim', '2026-08-16T18:00:00-03:00'],
   ])(
@@ -281,7 +280,7 @@ describe('TasksService', () => {
             tipoAtividadeId: ID_TIPO_ATIVIDADE,
             titulo: 'Atividade',
             escopo: 'curso',
-            prazoInicio: inicio as string,
+            prazoInicio: inicio,
             prazoAtual: '2026-08-15T18:00:00-03:00',
           },
           mentor,

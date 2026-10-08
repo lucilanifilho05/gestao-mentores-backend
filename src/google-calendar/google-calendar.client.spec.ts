@@ -43,4 +43,14 @@ describe('GoogleCalendarClient event delivery', () => {
       client.insertEvent('access', 'calendar', { id: '123abc' }),
     ).rejects.toBeInstanceOf(GoogleApiError);
   });
+  it('removes a calendar and accepts the empty Google response', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(
+      client.deleteCalendar('access', 'calendar@example.com'),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://www.googleapis.com/calendar/v3/calendars/calendar%40example.com',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
 });
