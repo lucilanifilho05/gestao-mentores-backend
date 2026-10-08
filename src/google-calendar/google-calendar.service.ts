@@ -169,7 +169,7 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(
       async (tx) => {
         // Serialize connections for one local user across backend replicas.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${authorization.usuarioId}))`;
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${authorization.usuarioId}))`;
         const user = await tx.usuario.findUniqueOrThrow({
           where: { id: authorization.usuarioId },
         });
@@ -217,7 +217,7 @@ export class GoogleCalendarService implements OnModuleInit, OnModuleDestroy {
   async disconnect(usuarioId: string): Promise<void> {
     this.requireEnabled();
     const connection = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${usuarioId}))`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${usuarioId}))`;
       const existing = await tx.googleCalendarConnection.findUnique({
         where: { usuarioId },
       });

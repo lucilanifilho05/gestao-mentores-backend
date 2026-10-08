@@ -3,6 +3,8 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
+  Logger,
   Post,
   Query,
   Req,
@@ -14,11 +16,13 @@ import type { UsuarioAutenticado } from '../auth/types/auth.types';
 import { Publico } from '../common/decorators/publico.decorator';
 import { UsuarioAtual } from '../common/decorators/usuario-atual.decorator';
 import { GoogleCalendarService } from './google-calendar.service';
+import { GoogleApiError } from './google-calendar.client';
 
 const STATE_COOKIE = 'google_calendar_state';
 
 @Controller('integracoes/google-agenda')
 export class GoogleCalendarController {
+  private readonly logger = new Logger(GoogleCalendarController.name);
   constructor(
     private readonly calendar: GoogleCalendarService,
     private readonly config: ConfigService,
@@ -76,8 +80,45 @@ export class GoogleCalendarController {
         Boolean(error),
       );
       result = 'conectado';
-    } catch {
-      /* Never expose Google tokens or authorization codes in errors. */
+    } catch (error: unknown) {
+      // Only known, bounded diagnostic codes are logged. Never serialize errors:
+      // their messages and stacks may contain credentials or authorization codes.
+      let diagnostic = 'internal_error';
+      if (error instanceof GoogleApiError) {
+        const allowed = [
+          'invalid_client',
+          'invalid_grant',
+          'access_denied',
+          'insufficientPermissions',
+          'accessNotConfigured',
+          'rateLimitExceeded',
+          'userRateLimitExceeded',
+        ];
+        diagnostic = `google_http_${error.status}:${allowed.includes(error.reason) ? error.reason : 'unknown'}`;
+      } else if (error instanceof HttpException) {
+        const messages: Record<string, string> = {
+          'Autorização inválida.': 'state_invalid_or_cookie_missing',
+          'Autorização expirada.': 'authorization_expired',
+          'Autorização já utilizada.': 'authorization_replayed',
+          'Acesso ao Google Agenda não autorizado.': 'consent_denied',
+          'Autorize o acesso ao calendário para continuar.':
+            'scope_or_refresh_token_missing',
+          'Conta Google inválida.': 'google_identity_invalid',
+          'Desconecte a conta atual antes de conectar outra.':
+            'google_account_mismatch',
+        };
+        diagnostic =
+          messages[error.message] ?? `application_http_${error.getStatus()}`;
+      } else if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        typeof error.code === 'string' &&
+        /^P\d{4}$/.test(error.code)
+      ) {
+        diagnostic = `prisma_${error.code}`;
+      }
+      this.logger.warn(`Falha no callback do Google Agenda: ${diagnostic}`);
     }
     response.redirect(this.calendar.callbackUrl(result));
   }
