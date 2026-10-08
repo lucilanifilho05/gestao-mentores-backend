@@ -15,6 +15,7 @@ import {
 } from '../generated/prisma/client';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleCalendarService } from '../google-calendar/google-calendar.service';
 import type {
   CriarTarefaDto,
   EscopoTarefaEntrada,
@@ -159,7 +160,10 @@ type TarefaDetalhe = Prisma.TarefaGetPayload<{
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleCalendar: GoogleCalendarService,
+  ) {}
 
   async listar(query: ListarTarefasQueryDto, usuario: UsuarioAutenticado) {
     const pagina = query.pagina ?? 1;
@@ -304,10 +308,7 @@ export class TasksService {
       throw new NotFoundException('Tarefa não encontrada ou não acessível.');
     }
 
-    if (
-      usuario.papel === Papel.MENTOR &&
-      tarefa.responsavelId !== usuario.id
-    ) {
+    if (usuario.papel === Papel.MENTOR && tarefa.responsavelId !== usuario.id) {
       await this.prisma.tarefaParticipante.updateMany({
         where: { tarefaId, mentorId: usuario.id, visualizadoEm: null },
         data: { visualizadoEm: new Date() },
@@ -383,13 +384,17 @@ export class TasksService {
   }
 
   async criar(dto: CriarTarefaDto, usuario: UsuarioAutenticado) {
-    const prazoInicio = dto.prazoInicio ? new Date(dto.prazoInicio) : null;
+    const prazoInicio = new Date(dto.prazoInicio);
 
     const prazoAtual = new Date(dto.prazoAtual);
 
-    if (prazoInicio && prazoAtual < prazoInicio) {
+    if (
+      !Number.isFinite(prazoInicio.getTime()) ||
+      !Number.isFinite(prazoAtual.getTime()) ||
+      prazoAtual <= prazoInicio
+    ) {
       throw new BadRequestException(
-        'O prazo final não pode ser anterior ao prazo inicial.',
+        'Informe o início e um prazo final posterior ao início da tarefa.',
       );
     }
 
@@ -521,42 +526,47 @@ export class TasksService {
       );
     }
 
-    const tarefa = await this.prisma.tarefa.create({
-      data: {
-        projetoId: projeto.id,
-        tipoAtividadeId: dto.tipoAtividadeId,
+    const tarefa = await this.prisma.$transaction(async (transaction) => {
+      const criada = await transaction.tarefa.create({
+        data: {
+          projetoId: projeto.id,
+          tipoAtividadeId: dto.tipoAtividadeId,
 
-        titulo: dto.titulo.trim().replace(/\s+/g, ' '),
+          titulo: dto.titulo.trim().replace(/\s+/g, ' '),
 
-        descricao: sanitizeTaskDescription(dto.descricao),
+          descricao: sanitizeTaskDescription(dto.descricao),
 
-        criadoPorId: usuario.id,
-        responsavelId,
+          criadoPorId: usuario.id,
+          responsavelId,
 
-        escopo,
-        cursoId: referencias.cursoId,
-        turmaId: referencias.turmaId,
+          escopo,
+          cursoId: referencias.cursoId,
+          turmaId: referencias.turmaId,
 
-        prazoInicio,
-        prazoAtual,
+          prazoInicio,
+          prazoAtual,
 
-        status: StatusTarefa.PLANEJADA,
-        iniciadoEm: null,
-        concluidoEm: null,
-        links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
-        participantes: participanteIds.length
-          ? {
-              create: participanteIds.map((mentorId) => ({ mentorId })),
-            }
-          : undefined,
-      },
+          status: StatusTarefa.PLANEJADA,
+          iniciadoEm: null,
+          concluidoEm: null,
+          links: [...new Set(dto.links?.map((link) => link.trim()) ?? [])],
+          participantes: participanteIds.length
+            ? {
+                create: participanteIds.map((mentorId) => ({ mentorId })),
+              }
+            : undefined,
+        },
 
-      select: tarefaDetalheSelect,
-    });
+        select: tarefaDetalheSelect,
+      });
 
-    await this.prisma.projeto.updateMany({
-      where: { id: projeto.id, status: StatusProjeto.PLANEJAMENTO },
-      data: { status: StatusProjeto.EM_ANDAMENTO },
+      await transaction.projeto.updateMany({
+        where: { id: projeto.id, status: StatusProjeto.PLANEJAMENTO },
+        data: { status: StatusProjeto.EM_ANDAMENTO },
+      });
+
+      await this.googleCalendar.enqueue(transaction, [criada]);
+      return criada;
     });
 
     return this.formatarDetalhe(tarefa, usuario);
@@ -657,6 +667,8 @@ export class TasksService {
         where: { id: projeto.id, status: StatusProjeto.PLANEJAMENTO },
         data: { status: StatusProjeto.EM_ANDAMENTO },
       });
+
+      await this.googleCalendar.enqueue(transaction, criadas);
 
       return criadas;
     });
@@ -1187,10 +1199,7 @@ export class TasksService {
     }
   }
 
-  private formatarResumo(
-    tarefa: TarefaResumo,
-    usuario: UsuarioAutenticado,
-  ) {
+  private formatarResumo(tarefa: TarefaResumo, usuario: UsuarioAutenticado) {
     const participanteAtual = tarefa.participantes.find(
       (participante) => participante.mentor.id === usuario.id,
     );
@@ -1267,10 +1276,7 @@ export class TasksService {
     };
   }
 
-  private formatarDetalhe(
-    tarefa: TarefaDetalhe,
-    usuario: UsuarioAutenticado,
-  ) {
+  private formatarDetalhe(tarefa: TarefaDetalhe, usuario: UsuarioAutenticado) {
     return {
       ...this.formatarResumo(tarefa, usuario),
 

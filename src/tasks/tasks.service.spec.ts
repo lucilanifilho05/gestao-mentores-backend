@@ -15,6 +15,7 @@ import {
   StatusTarefa,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleCalendarService } from '../google-calendar/google-calendar.service';
 import { TasksService } from './tasks.service';
 
 const ID_COORDENADORA = '11111111-1111-4111-8111-111111111111';
@@ -243,6 +244,14 @@ describe('TasksService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
+        {
+          provide: GoogleCalendarService,
+          useValue: {
+            enqueue: jest
+              .fn<() => Promise<void>>()
+              .mockResolvedValue(undefined),
+          },
+        },
 
         {
           provide: PrismaService,
@@ -257,6 +266,30 @@ describe('TasksService', () => {
   it('deve estar definido', () => {
     expect(service).toBeDefined();
   });
+
+  it.each([
+    ['início ausente', undefined],
+    ['início igual ao fim', '2026-08-15T18:00:00-03:00'],
+    ['início posterior ao fim', '2026-08-16T18:00:00-03:00'],
+  ])(
+    'rejeita criação com %s antes de gravar a tarefa',
+    async (_label, inicio) => {
+      await expect(
+        service.criar(
+          {
+            projetoId: ID_PROJETO,
+            tipoAtividadeId: ID_TIPO_ATIVIDADE,
+            titulo: 'Atividade',
+            escopo: 'curso',
+            prazoInicio: inicio as string,
+            prazoAtual: '2026-08-15T18:00:00-03:00',
+          },
+          mentor,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prismaMock.tarefa.create).not.toHaveBeenCalled();
+    },
+  );
 
   it('deve restringir a listagem do mentor às próprias tarefas', async () => {
     prismaMock.tarefa.findMany.mockResolvedValue([]);
@@ -336,6 +369,8 @@ describe('TasksService', () => {
           responsavelId: ID_OUTRO_MENTOR,
 
           escopo: 'evento_macro',
+
+          prazoInicio: '2026-08-01T12:00:00.000Z',
 
           prazoAtual: '2026-08-15T18:00:00-03:00',
         },
@@ -447,6 +482,8 @@ describe('TasksService', () => {
 
         responsavelIds: [ID_MENTOR, ID_OUTRO_MENTOR],
 
+        prazoInicio: '2026-08-01T12:00:00.000Z',
+
         prazoAtual: '2026-08-15T18:00:00-03:00',
       },
       coordenadora,
@@ -505,6 +542,7 @@ describe('TasksService', () => {
           titulo: 'Evento para mentores selecionados',
           escopo: 'evento_macro',
           responsavelIds: [ID_MENTOR, ID_OUTRO_MENTOR],
+          prazoInicio: '2026-08-01T12:00:00.000Z',
           prazoAtual: '2026-08-15T18:00:00-03:00',
         },
         coordenadora,
@@ -539,6 +577,8 @@ describe('TasksService', () => {
           responsavelId: ID_MENTOR,
 
           escopo: 'curso',
+
+          prazoInicio: '2026-08-01T12:00:00.000Z',
 
           prazoAtual: '2026-08-15T18:00:00-03:00',
         },
@@ -597,6 +637,8 @@ describe('TasksService', () => {
 
         escopo: 'curso',
         cursoId: ID_CURSO,
+
+        prazoInicio: '2026-08-01T12:00:00.000Z',
 
         prazoAtual: '2026-08-20T18:00:00-03:00',
       },
@@ -674,6 +716,7 @@ describe('TasksService', () => {
         participanteIds: [ID_MENTOR],
         escopo: 'curso',
         cursoId: ID_CURSO,
+        prazoInicio: '2026-08-01T12:00:00.000Z',
         prazoAtual: '2026-08-20T18:00:00-03:00',
       },
       coordenadora,
@@ -716,6 +759,7 @@ describe('TasksService', () => {
           responsavelId: ID_OUTRA_COORDENADORA,
           escopo: 'curso',
           cursoId: ID_CURSO,
+          prazoInicio: '2026-08-01T12:00:00.000Z',
           prazoAtual: '2026-08-20T18:00:00-03:00',
         },
         coordenadora,
@@ -751,6 +795,7 @@ describe('TasksService', () => {
         participanteIds: [ID_OUTRO_MENTOR],
         escopo: 'curso',
         cursoId: ID_CURSO,
+        prazoInicio: '2026-08-01T12:00:00.000Z',
         prazoAtual: '2026-08-20T18:00:00-03:00',
       },
       mentor,

@@ -59,7 +59,9 @@ export class CriarTarefaDto {
   @IsArray({ message: 'Os responsáveis devem ser enviados em uma lista.' })
   @ArrayMinSize(1, { message: 'Selecione pelo menos um mentor.' })
   @ArrayMaxSize(100, { message: 'Selecione no máximo 100 mentores.' })
-  @ArrayUnique({ message: 'A lista de responsáveis não deve conter duplicados.' })
+  @ArrayUnique({
+    message: 'A lista de responsáveis não deve conter duplicados.',
+  })
   @IsUUID('4', {
     each: true,
     message: 'Cada responsável deve possuir um UUID válido.',
@@ -69,7 +71,9 @@ export class CriarTarefaDto {
   @IsOptional()
   @IsArray({ message: 'Os mentores de apoio devem ser enviados em uma lista.' })
   @ArrayMaxSize(20, { message: 'Selecione no máximo 20 mentores de apoio.' })
-  @ArrayUnique({ message: 'A lista de mentores de apoio não deve conter duplicados.' })
+  @ArrayUnique({
+    message: 'A lista de mentores de apoio não deve conter duplicados.',
+  })
   @IsUUID('4', {
     each: true,
     message: 'Cada mentor de apoio deve possuir um UUID válido.',
@@ -97,14 +101,13 @@ export class CriarTarefaDto {
   })
   turmaId?: string;
 
-  @IsOptional()
   @IsDateString(
     {},
     {
       message: 'prazoInicio deve ser uma data ISO válida.',
     },
   )
-  prazoInicio?: string;
+  prazoInicio!: string;
 
   @IsDateString(
     {},

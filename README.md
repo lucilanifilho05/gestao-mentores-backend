@@ -4,6 +4,8 @@ API REST para gerenciamento de mentores, cursos, turmas, módulos, unidades curr
 
 O projeto foi desenvolvido com NestJS, Prisma ORM e PostgreSQL.
 
+A primeira entrega da integração com o Google Agenda está documentada em [GOOGLE-AGENDA.md](GOOGLE-AGENDA.md), com configuração OAuth, migração e roteiro de validação.
+
 > Esta versão está preparada para apresentação como beta em ambiente local ou controlado.
 
 ---

@@ -13,6 +13,7 @@ import { ActivityTypesModule } from './activity-types/activity-types.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ReportsModule } from './reports/reports.module';
 import { ProjectsModule } from './projects/projects.module';
+import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ProjectsModule } from './projects/projects.module';
     TasksModule,
     ProjectsModule,
     ReportsModule,
+    GoogleCalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -37,6 +37,8 @@ model Usuario {
   projetosCriados     Projeto[]            @relation("ProjetoCriador")
 
   sessoes         Sessao[]
+  conexaoGoogle   GoogleCalendarConnection?
+  autorizacoesGoogle GoogleCalendarAuthorization[]
   cursosMentoria  CursoMentor[] @relation("MentorCursos")
   vinculosCriados CursoMentor[] @relation("VinculadoPor")
 
@@ -240,6 +242,7 @@ model Tarefa {
   reagendamentos Reagendamento[]
   comentarios    ComentarioTarefa[]
   participantes  TarefaParticipante[]
+  eventosGoogle  GoogleCalendarEvent[]
 
   @@index([responsavelId, status, prazoAtual], map: "tarefas_responsavel_status_prazo_idx")
   @@index([cursoId, prazoAtual], map: "tarefas_curso_prazo_idx")
@@ -297,4 +300,50 @@ model Reagendamento {
   @@index([tarefaId, criadoEm], map: "reagendamentos_tarefa_criado_em_idx")
   @@index([reagendadoPorId], map: "reagendamentos_usuario_idx")
   @@map("reagendamentos")
+}
+
+model GoogleCalendarConnection {
+  id           String @id @default(uuid()) @db.Uuid
+  usuarioId    String @unique @map("usuario_id") @db.Uuid
+  googleSubject String @map("google_subject")
+  email        String @db.VarChar(254)
+  refreshToken String @map("refresh_token")
+  calendarId   String @map("calendar_id")
+  ativo        Boolean @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  usuario      Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  eventos      GoogleCalendarEvent[]
+  @@map("google_calendar_connections")
+}
+
+model GoogleCalendarAuthorization {
+  stateHash    String @id @map("state_hash")
+  usuarioId    String @map("usuario_id") @db.Uuid
+  tokenVersion Int @map("token_version")
+  verifier     String
+  expiraEm     DateTime @map("expira_em") @db.Timestamptz(3)
+  usuario      Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  @@index([expiraEm])
+  @@map("google_calendar_authorizations")
+}
+
+model GoogleCalendarEvent {
+  id           String @id @default(uuid()) @db.Uuid
+  tarefaId     String @map("tarefa_id") @db.Uuid
+  conexaoId    String @map("conexao_id") @db.Uuid
+  titulo       String
+  numero       Int
+  inicio       DateTime @db.Timestamptz(3)
+  fim          DateTime @db.Timestamptz(3)
+  estado       String @default("PENDENTE") @db.VarChar(20)
+  tentativas   Int @default(0)
+  proximaEm    DateTime @default(now()) @map("proxima_em") @db.Timestamptz(3)
+  leaseToken   String? @map("lease_token") @db.Uuid
+  erro         String? @db.VarChar(200)
+  sincronizadoEm DateTime? @map("sincronizado_em") @db.Timestamptz(3)
+  tarefa       Tarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  conexao      GoogleCalendarConnection @relation(fields: [conexaoId], references: [id], onDelete: Cascade)
+  @@unique([tarefaId, conexaoId])
+  @@index([estado, proximaEm])
+  @@map("google_calendar_events")
 }

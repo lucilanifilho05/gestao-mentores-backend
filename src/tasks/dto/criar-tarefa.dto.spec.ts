@@ -11,9 +11,18 @@ const tarefaValida = {
   escopo: 'curso',
   cursoId: '44444444-4444-4444-8444-444444444444',
   prazoAtual: '2026-09-30T18:00:00.000Z',
+  prazoInicio: '2026-09-30T15:00:00.000Z',
 };
 
 describe('CriarTarefaDto', () => {
+  it('rejeita a criação sem início', async () => {
+    const dto = plainToInstance(CriarTarefaDto, {
+      ...tarefaValida,
+      prazoInicio: undefined,
+    });
+    const erros = await validate(dto);
+    expect(erros.some((erro) => erro.property === 'prazoInicio')).toBe(true);
+  });
   it('aceita a criação sem observações', async () => {
     const dto = plainToInstance(CriarTarefaDto, tarefaValida);
 
